@@ -6,6 +6,8 @@
   <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
   <meta http-equiv="Permissions-Policy" content="microphone=*, camera=*">
   <meta http-equiv="Access-Control-Allow-Origin" content="*">
+  <meta http-equiv="Access-Control-Allow-Methods" content="GET, POST, OPTIONS">
+  <meta http-equiv="Access-Control-Allow-Headers" content="Content-Type, Authorization">
   <title>KiKo - Intelligent Chat Assistant</title>
   <style>
     :root {
@@ -312,7 +314,7 @@
     let speechActivated = false;
     let noSpeechTimer = null;
 
-    // Функция удаления эмодзи
+    // Функция удаления эмодзи (удаляет символы эмодзи, чтобы они не воспроизводились голосом)
     function stripEmojis(text) {
       return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]/gu, '');
     }
@@ -331,6 +333,7 @@
       messageDiv.textContent = text;
       chatContainer.appendChild(messageDiv);
       chatContainer.scrollTop = chatContainer.scrollHeight;
+      // Если сообщение от ассистента, озвучиваем его без эмодзи
       if (!isUser) {
         speakResponse(text);
       }
@@ -360,7 +363,7 @@
       }
     }
 
-    // Голосовой синтез: удаляет эмодзи и воспроизводит текст со скоростью 1.5
+    // Голосовой синтез: удаляет эмодзи из текста и воспроизводит его со скоростью 1.5
     function speakResponse(text) {
       hideThinking();
       stopSpeech();
@@ -502,6 +505,7 @@
         return 'Пожалуйста, настройте API-ключ OpenAI';
       }
       try {
+        // Формируем сообщения: системное сообщение + история чата + текущий запрос
         const messages = [
           {
             role: 'system',
@@ -574,6 +578,7 @@
       if (!text) return;
       stopSpeech();
       addMessage(text, true);
+      // Сохраняем сообщение пользователя в историю
       chatHistory.push({ role: 'user', content: text });
       userInput.value = '';
       try {
@@ -653,6 +658,7 @@
       const aiResponse = await getAIResponse(text);
       hideThinking();
       addMessage(aiResponse);
+      // Сохраняем ответ ассистента в историю
       chatHistory.push({ role: 'assistant', content: aiResponse });
     }
 
@@ -674,6 +680,7 @@
         addMessage('Голосовое распознавание запущено.');
       };
       recognitionObj.onresult = async (event) => {
+        // Активация голосового синтеза при первом голосовом вводе
         activateSpeechSynthesis();
         const result = event.results[event.results.length - 1];
         let text = result[0].transcript.trim().toLowerCase();
@@ -789,7 +796,7 @@
       if (isAndroidTV) {
         initForTV();
       }
-      window.speechSynthesis.getVoices();
+      loadVoices();
       addMessage('Привет! Можете вводить текст или говорить. Команды: «сделай фото», «скачай фото», «стоп видео» и т.д.');
       sendBtn.addEventListener('click', () => {
         activateSpeechSynthesis();
@@ -809,6 +816,24 @@
       recognition = setupSpeechRecognition();
       if (recognition) {
         recognition.start();
+      }
+    }
+
+    // Функция загрузки голосов
+    function loadVoices() {
+      let voices = [];
+      function setVoices() {
+        voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+        if (voices.length > 0) {
+          const ruVoice = voices.find(voice => voice.lang.startsWith('ru'));
+          if (ruVoice) {
+            console.log('Русский голос найден:', ruVoice.name);
+          }
+        }
+      }
+      if (window.speechSynthesis) {
+        setVoices();
+        window.speechSynthesis.onvoiceschanged = setVoices;
       }
     }
 
