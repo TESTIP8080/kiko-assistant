@@ -199,17 +199,12 @@
     if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
       window.location.href = window.location.href.replace('http:', 'https:');
     }
-
     // Проверка на Android TV
     const isAndroidTV = navigator.userAgent.toLowerCase().includes('android tv') ||
                         navigator.userAgent.toLowerCase().includes('smart tv');
-
     // Инициализация для Android TV
     function initForTV() {
-      // Увеличиваем размер элементов для удобства на TV
       document.documentElement.style.fontSize = '24px';
-      
-      // Отключаем hover эффекты и увеличиваем кнопки
       const style = document.createElement('style');
       style.textContent = `
         button:hover { 
@@ -226,8 +221,6 @@
         }
       `;
       document.head.appendChild(style);
-
-      // Поддержка фокуса для пульта
       document.querySelectorAll('button').forEach(btn => {
         btn.setAttribute('tabindex', '0');
       });
@@ -264,8 +257,15 @@
       </div>
     </div>
   </div>
-
+  
   <script>
+    // Глобальный обработчик ошибок
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error('Global error:', {message, source, lineno, colno, error});
+      addMessage(`Произошла ошибка: ${message}`, false, true);
+      return false;
+    };
+
     // ===========================
     //     Ваши API ключи
     // ===========================
@@ -278,7 +278,7 @@
           : ''
     };
 
-    // Глобальная история чата (для сохранения вопросов и ответов)
+    // Глобальная история чата
     let chatHistory = [];
 
     // ===========================
@@ -312,7 +312,7 @@
     let speechActivated = false;
     let noSpeechTimer = null;
 
-    // Функция удаления эмодзи (удаляет символы эмодзи, чтобы они не воспроизводились голосом)
+    // Функция удаления эмодзи
     function stripEmojis(text) {
       return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]/gu, '');
     }
@@ -331,7 +331,6 @@
       messageDiv.textContent = text;
       chatContainer.appendChild(messageDiv);
       chatContainer.scrollTop = chatContainer.scrollHeight;
-      // Если сообщение от ассистента, озвучиваем его без эмодзи
       if (!isUser) {
         speakResponse(text);
       }
@@ -361,7 +360,7 @@
       }
     }
 
-    // Голосовой синтез: удаляет эмодзи из текста и воспроизводит со скоростью 1.5
+    // Голосовой синтез: удаляет эмодзи и воспроизводит текст со скоростью 1.5
     function speakResponse(text) {
       hideThinking();
       stopSpeech();
@@ -503,7 +502,6 @@
         return 'Пожалуйста, настройте API-ключ OpenAI';
       }
       try {
-        // Формируем сообщения: системное сообщение + история чата + текущий запрос
         const messages = [
           {
             role: 'system',
@@ -524,18 +522,23 @@
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${config.OPENAI_API_KEY}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Origin': 'https://testip8080.github.io'
           },
+          mode: 'cors',
           body: JSON.stringify({
             model: 'gpt-3.5-turbo',
             messages: messages
           })
         });
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
         const data = await response.json();
         return data.choices[0].message.content;
       } catch (error) {
         console.error('AI Response Error:', error);
-        return 'Извините, произошла ошибка при получении ответа.';
+        return `Извините, произошла ошибка при получении ответа: ${error.message}`;
       }
     }
 
@@ -571,7 +574,6 @@
       if (!text) return;
       stopSpeech();
       addMessage(text, true);
-      // Сохраняем сообщение пользователя в историю
       chatHistory.push({ role: 'user', content: text });
       userInput.value = '';
       try {
@@ -651,7 +653,6 @@
       const aiResponse = await getAIResponse(text);
       hideThinking();
       addMessage(aiResponse);
-      // Сохраняем ответ ассистента в историю
       chatHistory.push({ role: 'assistant', content: aiResponse });
     }
 
@@ -673,7 +674,6 @@
         addMessage('Голосовое распознавание запущено.');
       };
       recognitionObj.onresult = async (event) => {
-        // Активация голосового синтеза при первом голосовом вводе
         activateSpeechSynthesis();
         const result = event.results[event.results.length - 1];
         let text = result[0].transcript.trim().toLowerCase();
@@ -760,7 +760,7 @@
     // Обработка кнопок пульта для Android TV
     document.addEventListener('keydown', (e) => {
       switch(e.keyCode) {
-        case 13: // OK button
+        case 13: // OK
           if (document.activeElement === userInput) {
             sendMessage();
           } else {
@@ -786,7 +786,6 @@
 
     // Инициализация
     function init() {
-      // Если устройство Android TV, выполняем дополнительные настройки
       if (isAndroidTV) {
         initForTV();
       }
@@ -813,7 +812,7 @@
       }
     }
 
-    // Функция для активации голосового синтеза (для браузеров, требующих явного взаимодействия)
+    // Активация голосового синтеза (для браузеров, требующих явного взаимодействия)
     function activateSpeechSynthesis() {
       if (!speechActivated) {
         const utterance = new SpeechSynthesisUtterance(' ');
@@ -822,32 +821,6 @@
       }
     }
 
-    // Инициализация для Android TV: увеличиваем шрифты и настраиваем фокус
-    function initForTV() {
-      document.documentElement.style.fontSize = '24px';
-      const style = document.createElement('style');
-      style.textContent = `
-        button:hover { 
-          transform: none !important;
-          opacity: 1 !important;
-        }
-        #send-btn, #voice-btn {
-          padding: 15px 30px;
-          font-size: 1.2em;
-        }
-        #user-input {
-          font-size: 1.2em;
-          padding: 15px;
-        }
-      `;
-      document.head.appendChild(style);
-      document.querySelectorAll('button').forEach(btn => {
-        btn.setAttribute('tabindex', '0');
-      });
-      userInput.setAttribute('tabindex', '0');
-    }
-
-    // Запуск после загрузки страницы
     window.addEventListener('load', init);
   </script>
 </body>
