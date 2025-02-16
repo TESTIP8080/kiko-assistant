@@ -178,11 +178,60 @@
       border: none;
       allow: autoplay;
     }
+    /* Стили для Android TV */
+    @media (hover: none) {
+      #send-btn, #voice-btn {
+        padding: 15px 30px;
+        font-size: 1.2em;
+        transition: none;
+      }
+      #send-btn:focus, #voice-btn:focus {
+        outline: 3px solid var(--accent-color);
+        transform: scale(1.1);
+      }
+      #user-input:focus {
+        outline: 3px solid var(--accent-color);
+      }
+    }
   </style>
   <script>
     // Проверка на HTTPS (если не localhost, перенаправляем)
     if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
       window.location.href = window.location.href.replace('http:', 'https:');
+    }
+
+    // Проверка на Android TV
+    const isAndroidTV = navigator.userAgent.toLowerCase().includes('android tv') ||
+                        navigator.userAgent.toLowerCase().includes('smart tv');
+
+    // Инициализация для Android TV
+    function initForTV() {
+      // Увеличиваем размер элементов для удобства на TV
+      document.documentElement.style.fontSize = '24px';
+      
+      // Отключаем hover эффекты и увеличиваем кнопки
+      const style = document.createElement('style');
+      style.textContent = `
+        button:hover { 
+          transform: none !important;
+          opacity: 1 !important;
+        }
+        #send-btn, #voice-btn {
+          padding: 15px 30px;
+          font-size: 1.2em;
+        }
+        #user-input {
+          font-size: 1.2em;
+          padding: 15px;
+        }
+      `;
+      document.head.appendChild(style);
+
+      // Поддержка фокуса для пульта
+      document.querySelectorAll('button').forEach(btn => {
+        btn.setAttribute('tabindex', '0');
+      });
+      userInput.setAttribute('tabindex', '0');
     }
   </script>
 </head>
@@ -708,8 +757,39 @@
       }
     }
 
+    // Обработка кнопок пульта для Android TV
+    document.addEventListener('keydown', (e) => {
+      switch(e.keyCode) {
+        case 13: // OK button
+          if (document.activeElement === userInput) {
+            sendMessage();
+          } else {
+            toggleVoiceInput();
+          }
+          break;
+        case 37: // Left
+          userInput.focus();
+          break;
+        case 39: // Right
+          voiceBtn.focus();
+          break;
+        case 27: // Back
+          stopSpeech();
+          stopCamera();
+          stopRecording();
+          if (recognition && voiceBtn.classList.contains('active')) {
+            recognition.stop();
+          }
+          break;
+      }
+    });
+
     // Инициализация
     function init() {
+      // Если устройство Android TV, выполняем дополнительные настройки
+      if (isAndroidTV) {
+        initForTV();
+      }
       window.speechSynthesis.getVoices();
       addMessage('Привет! Можете вводить текст или говорить. Команды: «сделай фото», «скачай фото», «стоп видео» и т.д.');
       sendBtn.addEventListener('click', () => {
@@ -727,23 +807,13 @@
           sendMessage();
         }
       });
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          stopSpeech();
-          stopCamera();
-          stopRecording();
-          if (recognition && voiceBtn.classList.contains('active')) {
-            recognition.stop();
-          }
-        }
-      });
       recognition = setupSpeechRecognition();
       if (recognition) {
         recognition.start();
       }
     }
 
-    // Активация голосового синтеза (для браузеров, требующих явного взаимодействия)
+    // Функция для активации голосового синтеза (для браузеров, требующих явного взаимодействия)
     function activateSpeechSynthesis() {
       if (!speechActivated) {
         const utterance = new SpeechSynthesisUtterance(' ');
@@ -752,6 +822,32 @@
       }
     }
 
+    // Инициализация для Android TV: увеличиваем шрифты и настраиваем фокус
+    function initForTV() {
+      document.documentElement.style.fontSize = '24px';
+      const style = document.createElement('style');
+      style.textContent = `
+        button:hover { 
+          transform: none !important;
+          opacity: 1 !important;
+        }
+        #send-btn, #voice-btn {
+          padding: 15px 30px;
+          font-size: 1.2em;
+        }
+        #user-input {
+          font-size: 1.2em;
+          padding: 15px;
+        }
+      `;
+      document.head.appendChild(style);
+      document.querySelectorAll('button').forEach(btn => {
+        btn.setAttribute('tabindex', '0');
+      });
+      userInput.setAttribute('tabindex', '0');
+    }
+
+    // Запуск после загрузки страницы
     window.addEventListener('load', init);
   </script>
 </body>
