@@ -272,8 +272,8 @@
     //     Ваши API ключи
     // ===========================
     const config = {
-      OPENAI_API_KEY: (location.hostname === 'localhost' || location.hostname.includes('github.io'))
-          ? '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'
+      GEMINI_API_KEY: (location.hostname === 'localhost' || location.hostname.includes('github.io'))
+          ? 'AIzaSyCfWs91WUOW8B6MFq9Xelh4hMU1OoIBXzQ'
           : '',
       YOUTUBE_API_KEY: (location.hostname === 'localhost' || location.hostname.includes('github.io'))
           ? 'AIzaSyAvR0lInlYD9qmHzTYgK7j7h8Jn_HYcuv8'
@@ -313,6 +313,8 @@
     let isSpeaking = false;
     let speechActivated = false;
     let noSpeechTimer = null;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
 
     // Функция удаления эмодзи (удаляет символы эмодзи, чтобы они не воспроизводились голосом)
     function stripEmojis(text) {
@@ -334,7 +336,7 @@
       chatContainer.appendChild(messageDiv);
       chatContainer.scrollTop = chatContainer.scrollHeight;
       // Если сообщение от ассистента, озвучиваем его без эмодзи
-      if (!isUser) {
+      if (!isUser && !isError) {
         speakResponse(text);
       }
       return messageDiv;
@@ -500,16 +502,26 @@
     }
 
     // AI и YouTube
-    async function getAIResponse(text) {
-      if (!config.OPENAI_API_KEY) {
-        return 'Пожалуйста, настройте API-ключ OpenAI';
+    async function getGeminiResponse(text) {
+      if (!config.GEMINI_API_KEY) {
+        return 'Пожалуйста, настройте API-ключ Gemini';
       }
+      
       try {
-        // Формируем сообщения: системное сообщение + история чата + текущий запрос
-        const messages = [
-          {
-            role: 'system',
-            content: `Ты Кико – продвинутый робот-друг семьи.
+        // Преобразуем историю чата в формат для Gemini
+        const geminiHistory = chatHistory.map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'model',
+          parts: [{ text: msg.content }]
+        }));
+        
+        // Добавим текущий запрос
+        const requestBody = {
+          contents: [
+            // Системное сообщение как первое сообщение модели
+            {
+              role: "model",
+              parts: [{
+                text: `Ты Кико – продвинутый робот-друг семьи.
 Основные характеристики:
 - Дружелюбный и веселый помощник для всей семьи;
 - Адаптируешь общение под возраст собеседника;
@@ -520,28 +532,90 @@
 - Приводи примеры из повседневной жизни.
 Если запрос касается видео, отвечай так: "Конечно, чтобы увидеть это видео, откройте на YouTube соответствующее видео."
 Отвечай структурировано, используй эмодзи для эмоциональной окраски (но не озвучивай их) и заканчивай позитивным предложением.`
-          }
-        ].concat(chatHistory, [{ role: 'user', content: text }]);
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${config.OPENAI_API_KEY}`,
-            'Content-Type': 'application/json',
-            'Origin': 'https://testip8080.github.io'
+              }]
+            },
+            ...geminiHistory,
+            {
+              role: "user",
+              parts: [{ text }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1000,
           },
-          mode: 'cors',
-          body: JSON.stringify({
-            model: 'gpt-3.5-turbo',
-            messages: messages
-          })
-        });
+          safetySettings: [
+            {
+              category: "HARM_CATEGORY_HARASSMENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_HATE_SPEECH",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            }
+          ]
+        };
+
+        // Отправляем запрос на API Gemini
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${config.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+          }
+        );
+
         if (!response.ok) {
+          const errorData = await response.json();
+          console.error('Gemini API Error:', errorData);
           throw new Error(`HTTP error! status: ${response.status}`);
         }
+
         const data = await response.json();
-        return data.choices[0].message.content;
+        
+        // Проверяем наличие ответа и обрабатываем возможные ошибки
+        if (data.candidates && data.candidates.length > 0 && 
+            data.candidates[0].content && 
+            data.candidates[0].content.parts && 
+            data.candidates[0].content.parts.length > 0) {
+          return data.candidates[0].content.parts[0].text;
+        } else if (data.promptFeedback && data.promptFeedback.blockReason) {
+          // Обработка блокировки контента
+          return `Извините, но я не могу ответить на этот вопрос. Причина: ${data.promptFeedback.blockReason}`;
+        } else {
+          console.error('Unexpected Gemini response structure:', data);
+          throw new Error('Неожиданный формат ответа от Gemini API');
+        }
       } catch (error) {
-        console.error('AI Response Error:', error);
+        console.error('Gemini Response Error:', error);
+        
+        // Если мы не превысили количество попыток, пробуем еще раз
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          console.log(`Повторная попытка ${retryCount}/${MAX_RETRIES}`);
+          return new Promise(resolve => {
+            setTimeout(async () => {
+              const result = await getGeminiResponse(text);
+              resolve(result);
+            }, 1000); // Задержка перед повторной попыткой
+          });
+        }
+        
+        // Сбрасываем счетчик попыток
+        retryCount = 0;
         return `Извините, произошла ошибка при получении ответа: ${error.message}`;
       }
     }
@@ -655,7 +729,7 @@
           playVideo(foundVideoUrl);
         }
       }
-      const aiResponse = await getAIResponse(text);
+      const aiResponse = await getGeminiResponse(text);
       hideThinking();
       addMessage(aiResponse);
       // Сохраняем ответ ассистента в историю
@@ -722,131 +796,3 @@
             }
           }, 2000);
         }
-      };
-      recognitionObj.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        let errorMessage = 'Произошла ошибка при распознавании речи.';
-        if (event.error === 'no-speech') {
-          errorMessage = 'Не распознана речь. Повторите, пожалуйста.';
-          setTimeout(() => recognitionObj.start(), 300);
-        } else if (event.error === 'audio-capture') {
-          errorMessage = 'Нет доступа к микрофону. Проверьте разрешения.';
-        } else if (event.error === 'not-allowed') {
-          errorMessage = 'Доступ к микрофону запрещен. Разрешите использование микрофона.';
-        }
-        addMessage(errorMessage, false, true);
-        listeningIndicator.style.display = 'none';
-        voiceBtn.classList.remove('active');
-      };
-      recognitionObj.onend = () => {
-        listeningIndicator.style.display = 'none';
-        voiceBtn.classList.remove('active');
-        setTimeout(() => {
-          try {
-            recognitionObj.start();
-          } catch (err) {
-            console.error('Ошибка при перезапуске распознавания речи:', err);
-          }
-        }, 100);
-      };
-      return recognitionObj;
-    }
-
-    function toggleVoiceInput() {
-      if (!recognition) {
-        recognition = setupSpeechRecognition();
-        if (!recognition) return;
-      }
-      if (voiceBtn.classList.contains('active')) {
-        recognition.stop();
-      } else {
-        recognition.start();
-      }
-    }
-
-    // Обработка кнопок пульта для Android TV
-    document.addEventListener('keydown', (e) => {
-      switch(e.keyCode) {
-        case 13: // OK
-          if (document.activeElement === userInput) {
-            sendMessage();
-          } else {
-            toggleVoiceInput();
-          }
-          break;
-        case 37: // Left
-          userInput.focus();
-          break;
-        case 39: // Right
-          voiceBtn.focus();
-          break;
-        case 27: // Back
-          stopSpeech();
-          stopCamera();
-          stopRecording();
-          if (recognition && voiceBtn.classList.contains('active')) {
-            recognition.stop();
-          }
-          break;
-      }
-    });
-
-    // Инициализация
-    function init() {
-      if (isAndroidTV) {
-        initForTV();
-      }
-      loadVoices();
-      addMessage('Привет! Можете вводить текст или говорить. Команды: «сделай фото», «скачай фото», «стоп видео» и т.д.');
-      sendBtn.addEventListener('click', () => {
-        activateSpeechSynthesis();
-        sendMessage();
-      });
-      voiceBtn.addEventListener('click', () => {
-        activateSpeechSynthesis();
-        toggleVoiceInput();
-      });
-      cameraBtn.addEventListener('click', capturePhoto);
-      userInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          activateSpeechSynthesis();
-          sendMessage();
-        }
-      });
-      recognition = setupSpeechRecognition();
-      if (recognition) {
-        recognition.start();
-      }
-    }
-
-    // Функция загрузки голосов
-    function loadVoices() {
-      let voices = [];
-      function setVoices() {
-        voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
-        if (voices.length > 0) {
-          const ruVoice = voices.find(voice => voice.lang.startsWith('ru'));
-          if (ruVoice) {
-            console.log('Русский голос найден:', ruVoice.name);
-          }
-        }
-      }
-      if (window.speechSynthesis) {
-        setVoices();
-        window.speechSynthesis.onvoiceschanged = setVoices;
-      }
-    }
-
-    // Активация голосового синтеза (для браузеров, требующих явного взаимодействия)
-    function activateSpeechSynthesis() {
-      if (!speechActivated) {
-        const utterance = new SpeechSynthesisUtterance(' ');
-        window.speechSynthesis.speak(utterance);
-        speechActivated = true;
-      }
-    }
-
-    window.addEventListener('load', init);
-  </script>
-</body>
-</html>
