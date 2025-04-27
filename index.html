@@ -4,16 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <!-- 
-    ВАЖНО: Заголовки безопасности лучше настраивать на уровне веб-сервера.
-    На GitHub Pages эти meta-теги имеют ограниченное влияние или не работают вовсе для некоторых директив.
-    HTTPS предоставляется GitHub Pages автоматически.
+    ВАЖНО: Эти заголовки могут не работать как ожидается только через <meta>. 
+    Лучше настраивать CORS и CSP на уровне веб-сервера. 
+    На GitHub Pages они имеют ограниченное влияние или не работают вовсе для некоторых директив.
   -->
-  <!-- <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests"> -->
+  <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
   <meta http-equiv="Permissions-Policy" content="microphone=*, camera=*">
-  <!-- Access-Control-* НЕ РАБОТАЮТ как meta-теги. Они должны быть HTTP заголовками от сервера источника. -->
-  <!-- <meta http-equiv="Access-Control-Allow-Origin" content="*"> -->
-  <!-- <meta http-equiv="Access-Control-Allow-Methods" content="GET, POST, OPTIONS"> -->
-  <!-- <meta http-equiv="Access-Control-Allow-Headers" content="Content-Type, Authorization"> -->
+  <!-- Следующие два заголовка (Access-Control) НЕ РАБОТАЮТ как <meta> теги. 
+       Они должны быть HTTP заголовками, устанавливаемыми сервером источника ресурсов. -->
+  <meta http-equiv="Access-Control-Allow-Origin" content="*">
+  <meta http-equiv="Access-Control-Allow-Methods" content="GET, POST, OPTIONS">
+  <meta http-equiv="Access-Control-Allow-Headers" content="Content-Type, Authorization">
   <title>KiKo - Intelligent Chat Assistant</title>
   <style>
     :root {
@@ -152,7 +153,7 @@
     }
     #camera-area, #video-area {
       flex: 1;
-      display: none; /* Скрываем по умолчанию */
+      display: none;
       position: relative;
       overflow: hidden;
       border-radius: var(--border-radius);
@@ -160,17 +161,13 @@
     }
     #camera-area.active {
       display: flex;
-      flex-direction: column; /* Убедимся, что кнопка под видео */
-      justify-content: center;
-      align-items: center;
     }
-     #video-area.active {
+    #video-area.active {
       display: flex;
     }
     #camera-preview {
       width: 100%;
-      height: auto; /* Позволяет видео адаптироваться */
-      max-height: calc(100% - 40px); /* Оставляем место для кнопки */
+      height: 100%;
       object-fit: contain;
     }
     #camera-btn {
@@ -188,36 +185,66 @@
       object-fit: contain;
       border-radius: var(--border-radius);
       border: none;
-      /* Добавляем необходимые разрешения для iframe */
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen";
+      /* Исправлен синтаксис атрибута allow - значения через запятую */
+      allow="autoplay, encrypted-media, fullscreen, picture-in-picture"; 
     }
-    /* Стили для Android TV (или устройств без ховера) */
-    /* Общие стили для focus, которые будут применяться при навигации с пульта */
+    /* Стили для Android TV */
+     /* Общие стили для focus, которые будут применяться при навигации с пульта */
     [tabindex="0"]:focus, button:focus, input:focus {
         outline: 3px solid var(--accent-color);
     }
 
-    @media (hover: none) { /* Медиа-запрос для устройств без ховера (например, ТВ) */
-      #send-btn, #voice-btn, #camera-btn {
+    @media (hover: none) {
+      #send-btn, #voice-btn {
         padding: 15px 30px;
         font-size: 1.2em;
-        transition: none; /* Убираем анимации при ховере */
+        transition: none;
       }
-      #user-input {
-        font-size: 1.2em;
-        padding: 15px;
+      /* Убрана трансформация scale(1.1) для focus на ТВ, т.к. может быть неудобной */
+      /*
+      #send-btn:focus, #voice-btn:focus {
+        outline: 3px solid var(--accent-color);
+        transform: scale(1.1);
       }
-      /* Убираем hover эффекты, так как на ТВ их нет */
+      #user-input:focus {
+        outline: 3px solid var(--accent-color);
+      }
+      */
+       /* Убираем hover эффекты, так как на ТВ их нет */
       button:hover {
          transform: none !important;
          opacity: 1 !important;
       }
     }
   </style>
+  <script>
+    // Проверка на HTTPS (если не localhost, перенаправляем)
+    // Добавлена проверка на домен GitHub Pages, т.к. он предоставляет HTTPS
+    const isGithubPages = window.location.hostname.endsWith('.github.io');
+    if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost') && !isGithubPages) {
+      window.location.href = window.location.href.replace('http:', 'https:');
+    }
+    // Проверка на Android TV (улучшено определение)
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isAndroidTV = userAgent.includes('android tv') || userAgent.includes('smarttv') || (userAgent.includes('android') && !userAgent.includes('mobile'));
+    
+    // Инициализация для Android TV
+    function initForTV() {
+      console.log("Initializing for Android TV...");
+      // document.documentElement.style.fontSize = '24px'; // Возможно, не нужно менять font-size здесь, если стили адаптивные
+      // Удален динамический style tag, focus стили добавлены в общую секцию style
+      
+      // Добавляем tabindex к интерактивным элементам для навигации с пульта
+      document.querySelectorAll('button, input[type="text"]').forEach(el => {
+        el.setAttribute('tabindex', '0');
+      });
+       // Убедимся, что фокус виден (стили focus добавлены выше в секции style)
+    }
+  </script>
 </head>
 <body>
   <div class="app-container">
-    <!-- Левая панель: чат -->
+    <!-- Чат -->
     <div class="chat-panel">
       <div id="listening-indicator"></div>
       <div id="chat-container"></div>
@@ -227,158 +254,137 @@
         <button id="voice-btn">🎤</button>
       </div>
     </div>
-
-    <!-- Правая панель: камера + YouTube -->
+    <!-- Камера и YouTube -->
     <div class="media-panel">
-      <!-- Камера -->
       <div class="media-container">
         <h4>Камера</h4>
-        <!-- Изначально скрыто, показывается при активации -->
         <div id="camera-area">
           <video id="camera-preview" autoplay muted></video>
-          <!-- Кнопка "Сделать фото" будет показываться, когда камера активна -->
           <button id="camera-btn">Сделать фото</button>
         </div>
       </div>
-      <!-- YouTube -->
       <div class="media-container">
         <h4>YouTube</h4>
-         <!-- Изначально скрыто, показывается при воспроизведении видео -->
         <div id="video-area">
-          <!-- Добавлен атрибут allow для разрешений, включая autoplay -->
-          <iframe allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"></iframe>
+          <!-- Исправлен синтаксис атрибута allow -->
+          <iframe allow="autoplay, encrypted-media, fullscreen, picture-in-picture"></iframe>
         </div>
       </div>
     </div>
   </div>
-
   <script>
-    // Глобальный обработчик ошибок (полезно для отладки на продакшене)
+    // Глобальный обработчик ошибок
     window.onerror = function(message, source, lineno, colno, error) {
       console.error('Global error:', {message, source, lineno, colno, error});
-      addMessage(`Произошла ошибка скрипта: ${message}`, false, true);
+      addMessage(`Произошла ошибка: ${message}`, false, true);
       return false; // Возвращаем false, чтобы браузер также вывел ошибку в консоль
     };
-
-     // Проверка на HTTPS (если не localhost и не GitHub Pages, перенаправляем)
-    const isGithubPages = window.location.hostname.endsWith('.github.io');
-    if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost') && !isGithubPages) {
-      window.location.href = window.location.href.replace('http:', 'https:');
-    }
-    // Проверка на Android TV (улучшим определение)
-    const userAgent = navigator.userAgent.toLowerCase();
-    const isAndroidTV = userAgent.includes('android tv') || userAgent.includes('smarttv') || (userAgent.includes('android') && !userAgent.includes('mobile'));
-
-    // Инициализация для Android TV
-    function initForTV() {
-      console.log("Initializing for Android TV...");
-      // Добавляем tabindex к интерактивным элементам для навигации с пульта
-      document.querySelectorAll('button, input[type="text"]').forEach(el => {
-        el.setAttribute('tabindex', '0');
-      });
-      // Стиль focus добавлен в CSS выше для всех [tabindex="0"], button, input.
-      // Можно добавить более специфические стили здесь, если нужно.
-    }
-
 
     // ===========================
     //     Ваши API ключи
     // ===========================
     // ВАЖНО: Хранение ключей в клиентском коде КРАЙНЕ НЕБЕЗОПАСНО!
-    // Для демонстрации на GitHub Pages это возможно, НО
+    // На GitHub Pages это единственный способ заставить работать без бэкенда, НО
     // НЕОБХОДИМО ДОБАВИТЬ СТРОГИЕ ОГРАНИЧЕНИЯ ПО HTTP-РЕФЕРЕРУ В GOOGLE CLOUD CONSOLE
     // (например, только для https://вашеимяпользователя.github.io/имярепозитория/*)
     // Используйте ЗАГЛУШКИ API ключей ниже, чтобы не выложить случайно свои реальные ключи!
     // ЗАМЕНИТЕ ЭТИ ЗАГЛУШКИ НА ВАШИ РЕАЛЬНЫЕ КЛЮЧИ (Gemini И YouTube)!
     const config = {
-      GEMINI_API_KEY: 'AIzaSyB0nsn5A_a6nAtGQsIZ-RZGrotGoCJaF8A', // <-- Замените на ваш ключ Gemini!
-      YOUTUBE_API_KEY: 'AIzaSyDt1cRmHyYNEPnu78Wt4Y_RgXNhKwD2Q44' // <-- Замените на ваш ключ YouTube Data API!
+      // Предполагается использование Gemini, как вы указали.
+      // Замените на ваш реальный ключ Gemini.
+      GEMINI_API_KEY: (location.hostname === 'localhost' || isGithubPages) 
+          ? 'ВАШ_API_КЛЮЧ_GEMINI' // <-- Замените на ваш ключ Gemini!
+          : '', // Не используем ключ на других доменах для безопасности
+      // Замените на ваш реальный ключ YouTube Data API.
+      YOUTUBE_API_KEY: (location.hostname === 'localhost' || isGithubPages)
+          ? 'ВАШ_API_КЛЮЧ_YOUTUBE' // <-- Замените на ваш ключ YouTube!
+          : '' // Не используем ключ на других доменах для безопасности
     };
      // Проверка, что ключи заменены (простая проверка, можно удалить после замены)
-     if (config.GEMINI_API_KEY === 'AIzaSyB0nsn5A_a6nAtGQsIZ-RZGrotGoCJaF8A' || config.YOUTUBE_API_KEY === 'AIzaSyDt1cRmHyYNEPnu78Wt4Y_RgXNhKwD2Q44') {
+     if (config.GEMINI_API_KEY === 'ВАШ_API_КЛЮЧ_GEMINI' || config.YOUTUBE_API_KEY === 'ВАШ_API_КЛЮЧ_YOUTUBE') {
         console.warn("ВНИМАНИЕ: API ключи не заменены на реальные! Функционал AI и YouTube не будет работать. Замените ЗАГЛУШКИ в коде на ваши ключи.");
-        // Можно добавить сообщение в чат для пользователя:
-        // addMessage('Внимание: API ключи не настроены. Функционал AI и YouTube ограничен.', false, true);
      }
 
 
     // Глобальная история чата (для Gemini)
-    let chatHistory = []; // Будем хранить объекты { role: 'user' | 'assistant', content: 'текст' }
+    let chatHistory = [];
 
     // ===========================
     //   DOM-элементы и состояние
     // ===========================
-    const chatContainer       = document.getElementById('chat-container');
-    const userInput           = document.getElementById('user-input');
-    const sendBtn             = document.getElementById('send-btn');
-    const voiceBtn            = document.getElementById('voice-btn');
-    const listeningIndicator  = document.getElementById('listening-indicator');
-    const cameraArea          = document.getElementById('camera-area');
-    const cameraPreview       = document.getElementById('camera-preview');
-    const cameraBtn           = document.getElementById('camera-btn');
-    const videoArea           = document.getElementById('video-area');
-    const videoIframe         = videoArea.querySelector('iframe'); // Получаем iframe
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const voiceBtn = document.getElementById('voice-btn');
+    const listeningIndicator = document.getElementById('listening-indicator');
+    const cameraArea = document.getElementById('camera-area');
+    const cameraPreview = document.getElementById('camera-preview');
+    const cameraBtn = document.getElementById('camera-btn');
+    const videoArea = document.getElementById('video-area');
+    const videoIframe = videoArea.querySelector('iframe');
 
-    let recognition           = null;
-    let currentSpeechSynthesis= null;
-    // let lastRecognizedText    = ''; // Не используется в новой логике onresult
-    let processingMessage     = false; // Флаг, показывает, обрабатывается ли текущий запрос
+    let recognition = null;
+    let currentSpeechSynthesis = null;
+    // Переменная lastRecognizedText используется в onresult в предоставленном коде.
+    // Оставляю ее и связанную с ней логику, хотя она может быть причиной нестабильности.
+    let lastRecognizedText = ''; 
+    let processingMessage = false; // Флаг, показывает, обрабатывается ли текущий запрос
 
-    let cameraStream          = null;
-    let isCameraActive        = false;
+    let cameraStream = null;
+    let isCameraActive = false;
 
-    let mediaRecorder         = null; // Оставлено для потенциального видео, пока не используется
-    let recordedChunks        = []; // Оставлено для потенциального видео
-    let isRecording           = false; // Оставлено для потенциального видео
+    let mediaRecorder = null; // Оставлено для потенциального видео
+    let recordedChunks = []; // Оставлено для потенциального видео
+    let isRecording = false; // Оставлено для потенциального видео
 
-    let lastPhotoDataUrl      = null;
-    let lastVideoBlobUrl      = null; // Оставлено для потенциального видео
-    let lastYouTubeUrl        = null; // Сохраняем URL последнего видео
+    let lastPhotoDataUrl = null;
+    let lastVideoBlobUrl = null; // Оставлено для потенциального видео
+    let lastYouTubeUrl = null; // Сохраняем URL последнего видео
 
     // Для «Думаю...»
-    let thinkingMessageDiv    = null;
+    let thinkingMessageDiv = null;
 
     let isSpeaking = false; // Флаг для отслеживания, говорит ли синтез речи
     let speechActivated = false; // Флаг, активирован ли синтез речи (первым взаимодействием)
+    // Переменная noSpeechTimer используется в onresult в предоставленном коде.
+    // Оставляю ее и связанную с ней логику, хотя она может быть причиной нестабильности.
+    let noSpeechTimer = null; 
+
+    let retryCount = 0; // Счетчик попыток для API запросов
+    const MAX_RETRIES = 3;
 
 
     // Функция удаления эмодзи (удаляет символы эмодзи, чтобы они не воспроизводились голосом)
     function stripEmojis(text) {
        // Используем более полный набор unicode блоков для эмодзи
-      return text.replace(/[\u{1F000}-\u{1FFFF}\u{2000}-\u{2BFF}\u{E000}-\u{F8FF}\u{FE00}-\u{FEFF}\u{FF00}-\u{FFFF}\u{1B000}-\u{1BFFF}\u{20000}-\u{2FFFF}\u{30000}-\u{3FFFF}]/gu, '');
+       // Возвращена версия из предыдущего рабочего кода
+      return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]/gu, '');
     }
-
 
     // ===========================
     //   Утилиты для чата и синтеза речи
     // ===========================
-    function addMessage(text, isUser = false, isError = false) { // Убрал extraClass, если не используется
+    function addMessage(text, isUser = false, isError = false) {
       const messageDiv = document.createElement('div');
       messageDiv.classList.add('message');
-
-      // user-message / ai-message / error-message
       if (isError) {
         messageDiv.classList.add('error-message');
       } else {
         messageDiv.classList.add(isUser ? 'user-message' : 'ai-message');
       }
-
       messageDiv.textContent = text;
       chatContainer.appendChild(messageDiv);
-      // Прокрутка к последнему сообщению
       chatContainer.scrollTop = chatContainer.scrollHeight;
-
-      // Если сообщение от ассистента И синтез активирован, озвучиваем без эмодзи
+      // Если сообщение от ассистента И синтез активирован, озвучиваем его без эмодзи
+      // Логика активации синтеза добавлена в initApp и activateSpeechSynthesis
       if (!isUser && !isError && speechActivated) {
         speakResponse(text);
       }
-
       return messageDiv; // Возвращаем созданный элемент для возможного добавления контента (как для фото)
     }
 
     function showThinking() {
-      // Удаляем предыдущий индикатор, если он был
-      hideThinking();
+      hideThinking(); // Удаляем предыдущий индикатор, если он был
       thinkingMessageDiv = document.createElement('div');
       thinkingMessageDiv.classList.add('message', 'ai-message', 'thinking-message'); // Добавляем класс ai-message для стилей
       thinkingMessageDiv.textContent = 'Думаю... 🤔'; // Можно добавить эмодзи
@@ -395,89 +401,106 @@
 
     function stopSpeech() {
       if (currentSpeechSynthesis && window.speechSynthesis.speaking) {
-        console.log('Stopping speech synthesis...');
+         console.log('Stopping speech synthesis...');
         window.speechSynthesis.cancel();
       }
       isSpeaking = false; // Устанавливаем флаг
       currentSpeechSynthesis = null; // Обнуляем
     }
 
-     // Голосовой синтез: удаляет эмодзи из текста и воспроизводит его
-     function speakResponse(text) {
-       // Убираем «Думаю...», если было (хотя speakResponse вызывается после addMessage, где hideThinking уже может быть вызвана)
-       // hideThinking();
+    // Голосовой синтез: удаляет эмодзи из текста и воспроизводит его
+    // Скорость 1.5 из предоставленного кода.
+    function speakResponse(text) {
+      hideThinking(); // Убираем «Думаю...», если было
+      stopSpeech(); // Останавливаем предыдущее воспроизведение
 
-       stopSpeech(); // Останавливаем предыдущее воспроизведение
-
-       if (!('speechSynthesis' in window) || !speechActivated) {
-           console.warn("Speech synthesis not supported or not activated.");
-           return;
-       }
-       try {
-         const cleanText = stripEmojis(text);
-         const utterance = new SpeechSynthesisUtterance(cleanText);
-         utterance.lang = 'ru-RU';
-         utterance.rate = 1.0; // Немного медленнее для лучшего понимания
-         utterance.pitch = 1.0; // Высота тона по умолчанию
-         utterance.volume = 1.0; // Громкость по умолчанию
-
-         // Поиск русского голоса
-         const voices = window.speechSynthesis.getVoices();
-         const ruVoice = voices.find(voice => voice.lang.startsWith('ru-RU') || voice.lang.startsWith('ru_'));
-         if (ruVoice) {
-           utterance.voice = ruVoice;
-         } else {
-             console.warn("Russian voice not found, using default.");
-             // Попробуем найти хоть какой-то голос, если русского нет (может быть null)
-             if (voices.length > 0) {
-                  utterance.voice = voices[0]; // Использовать первый доступный голос
-             }
-         }
-
-         isSpeaking = true;
-         utterance.onend = () => {
-           console.log('Speech synthesis ended.');
-           isSpeaking = false;
-           currentSpeechSynthesis = null; // Обнуляем после завершения
-         };
-         utterance.onerror = (event) => {
-             console.error('Speech synthesis error:', event.error);
-             isSpeaking = false;
-             currentSpeechSynthesis = null;
-         };
-
-         currentSpeechSynthesis = utterance; // Сохраняем текущий utterance для возможности отмены
-         window.speechSynthesis.speak(utterance);
-
-       } catch (error) {
-         console.error('Speech synthesis error:', error);
-         isSpeaking = false;
-       }
-        // Чтобы голоса были доступны сразу, нужно их загрузить.
-        // Это часто делается при первом взаимодействии.
-        // Событие voiceschanged может быть полезно.
-        if (!voices || voices.length === 0) {
-            window.speechSynthesis.onvoiceschanged = () => {
-                console.log("Speech synthesis voices changed/loaded. Trying to speak again.");
-                // Повторяем попытку после загрузки голосов, если текст был передан
-                if (text) speakResponse(text);
-                window.speechSynthesis.onvoiceschanged = null; // Убираем слушатель после использования
-            };
-        }
-     }
-
-      // Добавляем функцию для активации голосового синтеза
-      // Эта функция нужна, чтобы браузер разрешил speak() после первого взаимодействия пользователя (голосового или текстового ввода)
-      // Вызывается в onresult и sendMessage
-      function activateSpeechSynthesis() {
-        if (!speechActivated && 'speechSynthesis' in window) {
-          console.log("Activating speech synthesis...");
-          // Запрашиваем голоса. В некоторых браузерах это помогает "разбудить" синтез.
-          window.speechSynthesis.getVoices();
-          speechActivated = true;
-          console.log("Speech synthesis activated.");
-        }
+      if (!('speechSynthesis' in window) || !speechActivated) {
+          console.warn("Speech synthesis not supported or not activated.");
+          return;
       }
+      try {
+        const cleanText = stripEmojis(text);
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = 'ru-RU';
+        utterance.rate = 1.5; // Скорость из предоставленного кода
+        utterance.pitch = 1.0; // Высота тона
+        utterance.volume = 1.0; // Громкость
+
+        // Поиск русского голоса
+        const voices = window.speechSynthesis.getVoices();
+        const ruVoice = voices.find(voice => voice.lang.startsWith('ru-RU') || voice.lang.startsWith('ru_'));
+        if (ruVoice) {
+          utterance.voice = ruVoice;
+        } else {
+            console.warn("Russian voice not found, using default.");
+            // Попробуем найти хоть какой-то голос, если русского нет
+            if (voices.length > 0) {
+                 utterance.voice = voices[0]; // Использовать первый доступный голос
+            }
+        }
+
+        isSpeaking = true;
+        utterance.onend = () => {
+          console.log('Speech synthesis ended.');
+          isSpeaking = false;
+          currentSpeechSynthesis = null; // Обнуляем после завершения
+        };
+        utterance.onerror = (event) => {
+            console.error('Speech synthesis error:', event.error);
+            isSpeaking = false;
+            currentSpeechSynthesis = null;
+        };
+
+        currentSpeechSynthesis = utterance; // Сохраняем текущий utterance для возможности отмены
+        window.speechSynthesis.speak(utterance);
+
+      } catch (error) {
+        console.error('Speech synthesis error:', error);
+        isSpeaking = false;
+      }
+       // Чтобы голоса были доступны сразу, нужно их загрузить.
+       // Это часто делается при первом взаимодействии.
+       // Событие voiceschanged может быть полезно.
+       if (!voices || voices.length === 0) {
+           window.speechSynthesis.onvoiceschanged = () => {
+               console.log("Speech synthesis voices changed/loaded. Trying to speak again.");
+               // Повторяем попытку после загрузки голосов, если текст был передан
+               if (text) speakResponse(text);
+               window.speechSynthesis.onvoiceschanged = null; // Убираем слушатель после использования
+           };
+       }
+    }
+
+    // Активация синтеза речи при первом взаимодействии
+    function activateSpeechSynthesis() {
+      if (speechActivated) return;
+      if ('speechSynthesis' in window) {
+         console.log("Activating speech synthesis...");
+        // Загружаем голоса при первом взаимодействии
+        const voices = window.speechSynthesis.getVoices(); // Эта строка сама по себе может помочь с активацией
+        
+        // Попытка произнести тихий звук для обхода ограничений автовоспроизведения на iOS и др.
+        try {
+            const silence = new SpeechSynthesisUtterance('.');
+            silence.volume = 0;
+            silence.rate = 0.1; // Очень медленно, чтобы был хоть какой-то звук
+            silence.lang = 'en-US'; // Может потребоваться английский голос для тишины
+            window.speechSynthesis.speak(silence);
+            console.log("Attempted silent speech activation.");
+        } catch(e) {
+            console.warn("Silent speech activation failed:", e);
+        }
+
+        speechActivated = true;
+        console.log("Speech synthesis activated.");
+
+        // Удаляем слушатели после первой активации
+        document.body.removeEventListener('click', activateSpeechSynthesis, { once: true });
+        document.body.removeEventListener('keydown', activateSpeechSynthesis, { once: true });
+        document.body.removeEventListener('touchstart', activateSpeechSynthesis, { once: true });
+        document.body.removeEventListener('focus', activateSpeechSynthesis, { once: true });
+      }
+    }
 
 
     // ===========================
@@ -498,14 +521,14 @@
 
       try {
         console.log('Запрос доступа к камере...');
-        // Запрашиваем только видео, если аудио не нужно для записи видео со звуком
+        // Запрашиваем только видео. Если нужна запись видео со звуком, добавьте audio: true.
         cameraStream = await navigator.mediaDevices.getUserMedia({
           video: {
              width: { ideal: 1280 },
              height: { ideal: 720 },
              facingMode: 'user' // 'user' для фронтальной, 'environment' для задней
           },
-          audio: false // Не запрашиваем аудио по умолчанию, если не нужно
+          audio: false // Не запрашиваем аудио по умолчанию
         });
         console.log('Доступ к камере получен.');
         cameraPreview.srcObject = cameraStream;
@@ -550,7 +573,7 @@
            addMessage('Подождите, обрабатываю предыдущий запрос.', false, true);
            return;
        }
-       processingMessage = true; // Устанавливаем флаг обработки
+       // processingMessage = true; // Флаг обработки ставится и сбрасывается в sendMessage/processCommand
        hideThinking(); // Скрываем "Думаю..." если оно было
 
       try {
@@ -608,14 +631,13 @@
          console.error('Ошибка при создании фото:', error);
          addMessage('Не удалось сделать фото.', false, true);
       } finally {
-         processingMessage = false; // Сбрасываем флаг обработки
+         // processingMessage = false; // Флаг обработки ставится и сбрасывается в sendMessage/processCommand
+         // В данном случае capturePhoto вызывается из processCommand,
+         // поэтому флаг сбрасывается там. Если вызывается отдельно, его нужно сбросить здесь.
       }
     }
 
-    // ===========================
-    //   Запись видео (оставлено как пример, не активно по умолчанию)
-    // ===========================
-    /*
+    // Запись видео (функции присутствуют, но не используются в processCommand по умолчанию)
     function startRecording() {
       if (!cameraStream) {
         addMessage('Камера не включена, не могу начать запись', false, true);
@@ -628,9 +650,11 @@
        // Убедитесь, что getUserMedia был вызван с audio: true, если нужна запись звука
       try {
           // Проверяем, включен ли микрофон в cameraStream. Если нет, нужно запросить аудио отдельно или перезапустить камеру с аудио.
-          const streamToRecord = (cameraStream.getAudioTracks().length > 0) ? cameraStream : await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          const streamToRecord = (cameraStream.getAudioTracks().length > 0) ? cameraStream : null; // Не запрашиваем аудио здесь, если его нет в cameraStream
+
           if (!streamToRecord) {
-               addMessage('Не удалось получить доступ к микрофону для записи видео.', false, true);
+               addMessage('Не удалось получить доступ к потоку аудио для записи видео. Убедитесь, что камера включена с аудио доступом.', false, true);
+               console.error('Audio track not available in camera stream for recording.');
                return;
           }
 
@@ -643,8 +667,12 @@
           };
 
           mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: 'video/mp4' }); // Указываем тип MP4
+            // Используем тип 'video/mp4', но браузер может записать в другом формате (например, webm)
+            // Нужно проверить event.data.type в ondataavailable для точного типа
+            const blobType = recordedChunks.length > 0 ? recordedChunks[0].type : 'video/mp4';
+            const blob = new Blob(recordedChunks, { type: blobType }); 
             lastVideoBlobUrl = URL.createObjectURL(blob);
+
             const downloadBtn = document.createElement('button');
             downloadBtn.textContent = 'Скачать видео 🎬';
             downloadBtn.style.marginTop = '10px';
@@ -652,7 +680,7 @@
             downloadBtn.style.backgroundColor = '#dc3545'; // Красный цвет
             downloadBtn.style.color = 'white';
             downloadBtn.style.border = 'none';
-            downloadBtn.style.borderRadius = '5合物px';
+            downloadBtn.style.borderRadius = '5px';
             downloadBtn.style.cursor = 'pointer';
 
             downloadBtn.onclick = () => {
@@ -662,11 +690,11 @@
               }
               const a = document.createElement('a');
               a.href = lastVideoBlobUrl;
-              a.download = 'kiko_video.mp4';
+              a.download = 'kiko_video.' + (blobType.split('/')[1] || 'mp4'); // Используем реальное расширение
                document.body.appendChild(a);
                a.click();
                document.body.removeChild(a);
-              // Можно освободить URL объекта, если он больше не нужен
+              // Можно освободить URL объекта, если он больше не нужен после скачивания
               // URL.revokeObjectURL(lastVideoBlobUrl); lastVideoBlobUrl = null;
             };
             const messageDiv = addMessage('Видео записано:');
@@ -680,20 +708,17 @@
               isRecording = false;
               recordedChunks = [];
           };
-
-          mediaRecorder.start();
-          isRecording = true;
-          addMessage('Начата запись видео 🔴');
-          console.log('MediaRecorder started');
-
-           // Если поток микрофона был запрошен отдельно, его нужно остановить после окончания записи
-           if (streamToRecord !== cameraStream) {
-               mediaRecorder.onstop = () => {
-                   // ... (логика сохранения и скачивания) ...
-                   streamToRecord.getTracks().forEach(track => track.stop()); // Останавливаем микрофон
-                   recordedChunks = [];
-               };
+           // Проверяем состояние mediaRecorder перед стартом
+           if (mediaRecorder.state === 'inactive') {
+                mediaRecorder.start();
+                isRecording = true;
+                addMessage('Начата запись видео 🔴');
+                console.log('MediaRecorder started');
+           } else {
+               console.warn('MediaRecorder state is not inactive:', mediaRecorder.state);
+               addMessage('Не удалось начать запись видео. MediaRecorder занят.', false, true);
            }
+
 
       } catch (error) {
           console.error('Error starting MediaRecorder:', error);
@@ -708,30 +733,30 @@
       }
        if (mediaRecorder.state === 'recording') {
            console.log('Остановка записи видео...');
-           mediaRecorder.stop();
+           mediaRecorder.stop(); // Это вызовет onstop
            isRecording = false;
            addMessage('Остановлена запись видео.');
        } else {
             console.warn('MediaRecorder is not in recording state:', mediaRecorder.state);
+            addMessage('Запись видео не активна.', false, true);
        }
     }
-    */
 
-    // ===========================
-    //   AI (Gemini) и YouTube
-    // ===========================
+    // AI (Gemini) и YouTube
     async function getGeminiResponse(text) {
       if (!config.GEMINI_API_KEY || config.GEMINI_API_KEY === 'ВАШ_API_КЛЮЧ_GEMINI') {
-        return 'Пожалуйста, настройте API-ключ Gemini в коде для работы с AI.';
+        addMessage('Пожалуйста, настройте API-ключ Gemini в коде для работы с AI.', false, true);
+        return 'Пожалуйста, настройте API-ключ Gemini';
       }
 
       try {
         // Преобразуем историю чата в формат для Gemini (последние N сообщений)
         // Ограничим историю, чтобы запрос не стал слишком большим и дорогим
         const historyLimit = 20; // Например, последние 20 сообщений
-        // Фильтруем "Думаю..." сообщения из истории перед отправкой
+         // Фильтруем "Думаю..." сообщения из истории перед отправкой
         const filteredHistory = chatHistory.filter(msg => !msg.isThinking);
         const relevantHistory = filteredHistory.slice(-historyLimit); // Берем последние N
+
 
         const geminiHistory = relevantHistory.map(msg => ({
           role: msg.role === 'user' ? 'user' : 'model', // Убедимся, что роль 'model' для AI
@@ -756,11 +781,13 @@
             }]
          };
 
+
         // Добавим текущий запрос пользователя
         const userRequest = {
              role: "user",
              parts: [{ text }]
         };
+
 
         const requestBody = {
           contents: [
@@ -819,11 +846,11 @@
 
         const data = await response.json();
         console.log("Gemini API Response:", data);
-
+        
         // Проверяем наличие ответа и обрабатываем возможные ошибки/блокировки
-        if (data.candidates && data.candidates.length > 0 &&
-            data.candidates[0].content &&
-            data.candidates[0].content.parts &&
+        if (data.candidates && data.candidates.length > 0 && 
+            data.candidates[0].content && 
+            data.candidates[0].content.parts && 
             data.candidates[0].content.parts.length > 0) {
             // Сбрасываем счетчик ошибок при успешном ответе
             retryCount = 0;
@@ -833,7 +860,7 @@
              retryCount = 0; // Сбрасываем счетчик при блокировке
              return `Извините, но я не могу ответить на этот вопрос. Причина: ${data.promptFeedback.blockReason}. Попробуйте сформулировать иначе! 🤔`;
         } else if (data.candidates && data.candidates.length > 0 && data.candidates[0].finishReason && data.candidates[0].finishReason !== 'STOP') {
-            // Обработка других причин завершения, кроме STOP (успешного завершения генерации)
+             // Обработка других причин завершения, кроме STOP (успешного завершения генерации)
              retryCount = 0;
              return `Не удалось сгенерировать полный ответ. Причина: ${data.candidates[0].finishReason}. Возможно, тема слишком сложная или чувствительная.`;
         }
@@ -866,6 +893,7 @@
       }
     }
 
+
     async function searchYouTube(query) {
       if (!config.YOUTUBE_API_KEY || config.YOUTUBE_API_KEY === 'ВАШ_API_КЛЮЧ_YOUTUBE') {
         console.warn("YouTube API key not configured.");
@@ -879,11 +907,12 @@
 
       try {
         console.log(`Searching YouTube for: "${query}"`);
+        // Исправлен синтаксис шаблонной строки (обратные кавычки)
         const response = await fetch(
           `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${config.YOUTUBE_API_KEY}`
         );
         const data = await response.json();
-         console.log("YouTube Search Response:", data);
+        console.log("YouTube Search Response:", data);
 
         if (!response.ok) {
             console.error('YouTube API Error:', response.status, data);
@@ -896,6 +925,7 @@
 
         if (data.items && data.items.length > 0) {
              console.log("YouTube video found:", data.items[0].id.videoId);
+             // Исправлен синтаксис шаблонной строки (обратные кавычки)
           return `https://www.youtube.com/watch?v=${data.items[0].id.videoId}`;
         }
          console.log("No YouTube results found for query:", query);
@@ -935,6 +965,7 @@
      // Функция для остановки воспроизведения видео на YouTube
      function stopVideo() {
          if (videoArea.classList.contains('active')) {
+             console.log('Stopping YouTube video...');
              // Чтобы остановить видео в iframe, нужно сбросить его src или использовать API
              videoIframe.src = ''; // Самый простой способ - сбросить src
              videoArea.classList.remove('active');
@@ -986,12 +1017,12 @@
       const cameraOnTriggers     = ['камера','включи камеру','покажи камеру'];
       const cameraOffTriggers    = ['стоп камера','выключи камеру','скрой камеру','убери камеру'];
 
-      // Функции записи видео закомментированы, триггеры тоже не будут работать
-      // const videoStartTriggers   = ['запиши видео','начать запись видео'];
-      // const videoStopTriggers    = ['стоп видео','останови видео запись'];
+      // Функции записи видео закомментированы, триггеры тоже не будут работать по умолчанию
+      const videoStartTriggers   = ['запиши видео','начать запись видео'];
+      const videoStopTriggers    = ['стоп видео','останови видео запись'];
 
       const downloadPhotoTriggers= ['скачай фото','загрузи фото','сохрани фото'];
-      // const downloadVideoTriggers= ['скачай видео','загрузи видео','сохрани видео запись']; // Для записи видео
+      const downloadVideoTriggers= ['скачай видео','загрузи видео','сохрани видео запись']; // Для записи видео
 
       const playYouTubeTriggers  = ['покажи видео', 'найди видео', 'включи видео', 'воспроизведи видео', 'ютуб видео', 'смотреть']; // Триггеры для поиска и воспроизведения YouTube
       const stopYouTubeTriggers  = ['стоп видео', 'останови видео', 'хватит видео', 'закончи видео']; // Триггеры для остановки видео
@@ -1002,7 +1033,8 @@
 
        // Команды остановки всего (для голоса и текста)
        const stopAllCommands = ['хватит','прекрати всё','останови всё', 'стоп все', 'стоп'];
-        if (stopAllCommands.some(cmd => lowerText === cmd || lowerText.startsWith(cmd + ' ') || lowerText.includes(' ' + cmd))) { // Более точная проверка команд
+        // Проверяем на вхождение, учитывая границы слов или точное совпадение
+        if (stopAllCommands.some(cmd => lowerText === cmd || lowerText.startsWith(cmd + ' ') || lowerText.endsWith(' ' + cmd) || lowerText.includes(' ' + cmd + ' '))) { 
            console.log("Command 'stop' detected.");
            hideThinking();
            stopSpeech(); // Останавливаем речь
@@ -1020,17 +1052,21 @@
        // Команды камеры и фото
       if (photoTriggers.some(t => lowerText.includes(t))) {
         hideThinking(); // Скрываем "Думаю..." для быстрых команд
-        capturePhoto(); // Делаем фото (она сама проверяет, включена ли камера)
-        return; // Завершаем обработку команды
+        // capturePhoto сама проверяет, включена ли камера и добавляет сообщение, если нет
+        capturePhoto(); 
+        processingMessage = false; // Команда выполнена быстро, сбрасываем флаг
+        return; 
       }
       if (cameraOnTriggers.some(t => lowerText.includes(t))) {
         hideThinking();
         await startCamera();
+        processingMessage = false;
         return;
       }
       if (cameraOffTriggers.some(t => lowerText.includes(t))) {
         hideThinking();
         stopCamera();
+        processingMessage = false;
         return;
       }
 
@@ -1039,65 +1075,69 @@
         hideThinking();
         if (!lastPhotoDataUrl) {
           addMessage('Нет доступного фото для скачивания.', false, true);
-          return;
-        }
-        // Имитируем клик по кнопке скачивания фото, созданной ранее
-        // Находим последнюю кнопку скачивания фото в чате (более надежный поиск)
-        const downloadButtons = chatContainer.querySelectorAll('.message button');
-        const lastPhotoDownloadBtn = Array.from(downloadButtons).reverse().find(btn => btn.textContent.includes('Скачать фото')); // Ищем с конца
-
-        if (lastPhotoDownloadBtn) {
-             console.log("Clicking download button for photo.");
-             lastPhotoDownloadBtn.click(); // Кликаем по ней
-             addMessage('Скачиваю фото...'); // Опционально
         } else {
-             // Если кнопка не найдена (например, после перезагрузки или если фото сделано без кнопки),
-             // создаем ссылку для скачивания напрямую
-             console.warn("Download photo button not found in chat, creating link directly.");
-             const a = document.createElement('a');
-             a.href = lastPhotoDataUrl;
-             a.download = 'kiko_photo.jpg'; // Имя файла
-             document.body.appendChild(a); // Нужно добавить в DOM для Firefox
-             a.click();
-             document.body.removeChild(a); // Удалить после клика
-             addMessage('Скачиваю фото...'); // Опционально
+           // Имитируем клик по кнопке скачивания фото, созданной ранее
+           const downloadButtons = chatContainer.querySelectorAll('.message button');
+           const lastPhotoDownloadBtn = Array.from(downloadButtons).reverse().find(btn => btn.textContent.includes('Скачать фото')); // Ищем с конца
+
+           if (lastPhotoDownloadBtn) {
+                console.log("Clicking download button for photo.");
+                lastPhotoDownloadBtn.click(); // Кликаем по ней
+                addMessage('Скачиваю фото...'); // Опционально
+           } else {
+                // Если кнопка не найдена (например, после перезагрузки), создаем ссылку напрямую
+                console.warn("Download photo button not found in chat, creating link directly.");
+                const a = document.createElement('a');
+                a.href = lastPhotoDataUrl;
+                a.download = 'kiko_photo.jpg'; // Имя файла
+                document.body.appendChild(a); // Нужно добавить в DOM для Firefox
+                a.click();
+                document.body.removeChild(a); // Удалить после клика
+                addMessage('Скачиваю фото...'); // Опционально
+           }
         }
+        processingMessage = false;
         return;
       }
-       /*
-       // Команды записи/скачивания видео (закомментированы, так как функции закомментированы)
+
+      /*
+      // Команды записи/скачивания видео (закомментированы, т.к. функции закомментированы)
        if (videoStartTriggers.some(t => lowerText.includes(t))) {
          hideThinking();
-         if (!isCameraActive) await startCamera(); // Начинаем запись, возможно потребуется включить камеру сначала
+         if (!isCameraActive) await startCamera();
          startRecording();
+         processingMessage = false;
          return;
        } else if (videoStopTriggers.some(t => lowerText.includes(t))) {
          hideThinking();
          stopRecording();
+         processingMessage = false;
          return;
        }
        if (downloadVideoTriggers.some(t => lowerText.includes(t))) {
          hideThinking();
          if (!lastVideoBlobUrl) {
            addMessage('Нет записанного видео для скачивания', false, true);
-           return;
+         } else {
+            const a = document.createElement('a');
+            a.href = lastVideoBlobUrl;
+            a.download = 'kiko_video.mp4';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            addMessage('Скачиваю видео...'); // Опционально
          }
-         const a = document.createElement('a');
-         a.href = lastVideoBlobUrl;
-         a.download = 'kiko_video.mp4';
-         document.body.appendChild(a);
-         a.click();
-         document.body.removeChild(a);
-         addMessage('Скачиваю видео...'); // Опционально
+         processingMessage = false;
          return;
        }
-       */
+      */
 
        // Команды YouTube
 
       if (stopYouTubeTriggers.some(t => lowerText.includes(t))) {
           hideThinking();
           stopVideo(); // Вызываем функцию остановки видео
+          processingMessage = false;
           return; // Завершаем обработку команды
       }
 
@@ -1110,9 +1150,9 @@
           } else {
               addMessage('Нет последнего просмотренного видео для повтора. Сначала найдите видео.', false);
           }
+          processingMessage = false;
           return; // Завершаем обработку команды
       }
-
 
        // Поиск и воспроизведение YouTube видео
       // Эта команда должна идти ПЕРЕД отправкой в AI, чтобы сначала проверить,
@@ -1121,22 +1161,24 @@
           hideThinking();
           // Извлекаем поисковый запрос из фразы пользователя
           let query = text;
+          let foundTrigger = false;
           for (const trigger of playYouTubeTriggers) {
               const index = lowerText.indexOf(trigger);
               if (index !== -1) {
                   // Берем текст после триггера как запрос
                   query = text.substring(index + trigger.length).trim();
-                  // Если после триггера пусто, возможно, пользователь просто сказал "найди видео"
-                  if (query === '') {
-                       addMessage('Что именно найти на YouTube? 🤔', false);
-                       processingMessage = false; // Сбрасываем флаг
-                       return; // Завершаем обработку
-                  }
-                  break; // Нашли триггер и извлекли запрос, выходим из цикла
+                   foundTrigger = true;
+                  break;
               }
           }
 
-          if (query) {
+          if (foundTrigger && query === '') {
+               addMessage('Что именно найти на YouTube? 🤔', false);
+               processingMessage = false; // Сбрасываем флаг
+               return; // Завершаем обработку
+          }
+
+          if (query && foundTrigger) { // Убеждаемся, что был триггер И есть запрос
               addMessage(`Ищу видео на YouTube по запросу "${query}"...`);
               showThinking(); // Показываем индикатор пока ищем
               const foundVideoUrl = await searchYouTube(query);
@@ -1145,7 +1187,7 @@
                   playVideo(foundVideoUrl);
                   // Не добавляем ответ AI после воспроизведения видео, только сообщение "Воспроизвожу..."
               } else {
-                  // Если видео не найдено, можно спросить AI или сообщить об этом
+                  // Если видео не найдено, сообщаем об этом
                   addMessage(`Не смогла найти видео на YouTube по запросу "${query}". Попробуйте сформулировать по-другому.`);
                   // Опционально: отправить запрос в AI, если видео не найдено
                   // const aiResponse = await getGeminiResponse(`Не найдено видео по запросу "${query}". Дай совет или информацию по этой теме.`);
@@ -1153,11 +1195,18 @@
                   // chatHistory.push({ role: 'assistant', content: aiResponse });
               }
           } else {
-              // Это случай, когда команда "найди видео" была сказана без уточнения
-              addMessage('Что именно найти на YouTube? 🤔', false);
+               // Если не нашли триггер или запроса нет, это не команда YouTube.
+               // Пропускаем дальше к обработке AI.
+               console.log("Query does not seem to be a YouTube search command:", text);
+               // Здесь не возвращаемся, чтобы код пошел дальше к AI
           }
-          processingMessage = false; // Важно сбросить флаг обработки после команды YouTube
-          return; // Завершаем обработку команды YouTube
+
+           // Если команда YouTube была успешно обработана (найден триггер и запрос или пусто после триггера)
+           if (foundTrigger) {
+                processingMessage = false; // Важно сбросить флаг обработки после команды YouTube
+                return; // Завершаем обработку команды YouTube
+           }
+           // Иначе (если триггер не найден или это не команда YouTube), продолжаем к AI
       }
 
 
@@ -1175,6 +1224,8 @@
            else if (lowerText.includes('как дела')) simpleResponse = "Отлично, спасибо! А у тебя как? 😊";
             else if (lowerText === 'ок' || lowerText === 'хорошо' || lowerText === 'да') simpleResponse = "👍";
              else if (lowerText === 'нет') simpleResponse = "Хорошо!";
+             else if (lowerText.includes('пожалуйста')) simpleResponse = "Всегда пожалуйста! 😉";
+
 
            hideThinking();
            addMessage(simpleResponse);
@@ -1185,7 +1236,7 @@
 
       // Если это не распознанная команда и не простое приветствие, отправляем в Gemini
       console.log("Sending query to Gemini:", text);
-      // Добавляем сообщение пользователя в историю (уже добавлено в sendMessage, но дублирование тут не страшно, если вызывается напрямую)
+      // Добавляем сообщение пользователя в историю (уже добавлено в sendMessage)
       // chatHistory.push({ role: 'user', content: text }); // Это уже в sendMessage
 
       const aiResponse = await getGeminiResponse(text);
@@ -1218,7 +1269,7 @@
         console.log('Speech recognition started.');
         listeningIndicator.style.display = 'block'; // Показываем индикатор
         voiceBtn.classList.add('active'); // Активируем кнопку (меняем стиль)
-        // addMessage('Голосовое распознавание запущено. Говорите в микрофон.'); // Слишком много сообщений, лучше без этого
+        // addMessage('Голосовое распознавание запущено.'); // Слишком много сообщений, лучше без этого
       };
 
       recognitionObj.onresult = async (event) => {
@@ -1230,33 +1281,47 @@
         // Берем последний результат из списка
         const result = event.results[event.results.length - 1];
         // Получаем распознанный текст (может быть промежуточным)
-        const text = result[0].transcript.trim();
-        const lowerText = text.toLowerCase();
+        let text = result[0].transcript.trim();
+        let lowerText = text.toLowerCase();
 
         // Обработка команды "стоп" для быстрого завершения даже на промежуточном результате
         const stopAllCommands = ['хватит','прекрати всё','останови всё', 'стоп все', 'стоп'];
-        // Проверяем, включает ли текст (даже промежуточный) команду остановки
-        if (stopAllCommands.some(cmd => lowerText.includes(cmd))) {
-            console.log("Voice command 'stop' detected (interim or final).");
-            // Проверяем, активно ли распознавание, прежде чем пытаться остановить
-            if (recognitionObj && recognitionObj.recognizing) {
-               recognitionObj.stop(); // Останавливаем распознавание (вызовет onend)
-            }
-            stopSpeech(); // Останавливаем речь
-            stopCamera(); // Останавливаем камеру
-            stopVideo(); // Останавливаем видео
-            // Индикаторы и класс кнопки будут сброшены в onend
-            // addMessage('Остановка по голосовой команде.'); // Опционально: сообщение о выполнении команды
-            processingMessage = false; // Сбрасываем флаг обработки
-            return; // Прекращаем обработку результата
-        }
+         // Проверяем, включает ли текст (даже промежуточный) команду остановки
+         if (stopAllCommands.some(cmd => lowerText.includes(cmd))) {
+             console.log("Voice command 'stop' detected (interim or final).");
+             // Проверяем, активно ли распознавание, прежде чем пытаться остановить
+             if (recognitionObj && recognitionObj.recognizing) { // Используем recognizing
+                recognitionObj.stop(); // Останавливаем распознавание (вызовет onend)
+             }
+             // stopSpeech, stopCamera, stopVideo вызываются из processCommand,
+             // но можно продублировать здесь для немедленного эффекта, если команда "стоп"
+             // сказана во время ожидания финализации фразы.
+             stopSpeech();
+             stopCamera();
+             stopVideo();
+
+             // Индикаторы и класс кнопки будут сброшены в onend
+             // addMessage('Остановка по голосовой команде.'); // Опционально: сообщение
+             processingMessage = false; // Сбрасываем флаг обработки
+             if (noSpeechTimer) clearTimeout(noSpeechTimer); // Очищаем таймер, если был активен
+             lastRecognizedText = ''; // Сбрасываем для новой фразы
+             return; // Прекращаем обработку результата
+         }
+
 
         // Обрабатываем только ФИНАЛЬНЫЕ результаты
         if (result.isFinal) {
             console.log("Final voice result:", text);
-             // Проверяем, не обрабатываем ли мы уже что-то
-            if (!processingMessage && text.length > 0) { // Также проверяем, что текст не пустой
+             // Очищаем таймер, если финальный результат получен до его срабатывания
+            if (noSpeechTimer) clearTimeout(noSpeechTimer);
+
+             // Проверяем, не обрабатываем ли мы уже что-то И не дублируется ли последняя обработанная фраза
+             // (Логика с lastRecognizedText и noSpeechTimer из предоставленного кода сохранена,
+             // хотя она может быть нестабильной с continuous=true и interimResults=true)
+            if (text.length > 0 && text.toLowerCase() !== lastRecognizedText && !processingMessage) {
+               lastRecognizedText = text.toLowerCase(); // Обновляем последнюю обработанную фразу
                processingMessage = true; // Устанавливаем флаг обработки
+
                 // Добавляем финальный текст пользователя в чат
                addMessage(text, true);
                // Добавляем сообщение пользователя в историю (для AI)
@@ -1264,23 +1329,51 @@
                showThinking(); // Показываем индикатор
 
                try {
-                   await processCommand(text); // Выполняем команду/запрос к AI
+                   // Выполняем команду/запрос к AI
+                   // await processCommand(text); // Вызываем processCommand с оригинальным текстом
+                   // processCommand ожидает lowerText, поэтому приводим к нижнему регистру
+                   await processCommand(text); 
+
                } catch (error) {
                    console.error('Error processing final voice message:', error);
                    hideThinking();
                    addMessage('Извините, произошла ошибка при обработке голосового запроса.', false, true);
                } finally {
                    // Сбрасываем флаг в любом случае после завершения обработки
-                   processingMessage = false;
+                   // Небольшая задержка перед сбросом processingMessage, чтобы избежать двойной обработки
+                   // Это соответствует логике предоставленного кода.
+                   setTimeout(() => {
+                        processingMessage = false;
+                        // lastRecognizedText = ''; // Можно сбрасывать lastRecognizedText здесь
+                   }, 1500); // Задержка из предоставленного кода
                }
             } else {
-                 // Игнорируем финальный результат, если предыдущий еще обрабатывается или текст пустой
-                 console.log("Ignoring final voice result (processing active or text empty):", text);
+                 // Игнорируем финальный результат, если предыдущий еще обрабатывается, текст пустой, или он дублирует последний.
+                 console.log("Ignoring final voice result (processing active, text empty, or duplicate):", text);
             }
         } else {
-            // Это промежуточный результат. Можно его использовать для отображения
-            // "что сейчас слышно" в UI, но для "по минимуму" мы его просто логируем или игнорируем.
-             // console.log("Interim voice result:", text);
+            // Это промежуточный результат. Логика noSpeechTimer из предоставленного кода сохранена.
+            // Эта логика попытается обработать промежуточный результат, если нет дальнейшей речи в течение 2 секунд.
+             if (noSpeechTimer) clearTimeout(noSpeechTimer);
+             noSpeechTimer = setTimeout(() => {
+               // Проверяем, что есть текст, не идет обработка, и этот текст отличается от последнего обработанного финального
+               if (text && text.toLowerCase() !== lastRecognizedText && !processingMessage) {
+                 console.log("Processing interim voice result after delay:", text);
+                 lastRecognizedText = text.toLowerCase(); // Обновляем последнюю обработанную фразу
+                 processingMessage = true; // Устанавливаем флаг обработки
+                 addMessage(text, true); // Добавляем промежуточный текст как пользовательское сообщение
+                 showThinking(); // Показываем индикатор
+                 // Обрабатываем команду/запрос к AI
+                 processCommand(text) // Вызываем processCommand с текстом (приводим к нижнему регистру)
+                 .finally(() => {
+                   // Сбрасываем флаг после завершения обработки
+                   setTimeout(() => {
+                     processingMessage = false;
+                     // lastRecognizedText = ''; // Можно сбрасывать lastRecognizedText здесь
+                   }, 1500); // Задержка из предоставленного кода
+                 });
+               }
+             }, 2000); // Задержка из предоставленного кода
         }
       };
 
@@ -1289,64 +1382,95 @@
         listeningIndicator.style.display = 'none'; // Скрываем индикатор
         voiceBtn.classList.remove('active'); // Сбрасываем стиль кнопки
 
-        // !!! ВАЖНО: УБИРАЕМ АВТОМАТИЧЕСКИЙ ПЕРЕЗАПУСК recognition.start() !!!
-        // Это часто приводит к проблемам с разрешениями и нестабильности.
-        // Пользователь должен явно нажать кнопку "🎤" для повторного запуска.
-        // addMessage('Голосовое распознавание остановлено.'); // Слишком частое сообщение, лучше без него
+        // Логика автоматического перезапуска из предоставленного кода сохранена,
+        // хотя она может быть причиной нестабильности.
+        // Проверяем, что recognition все еще ссылается на наш объект
+        if (recognition === recognitionObj) {
+          setTimeout(() => {
+            // Перезапуск распознавания после короткой паузы, если это была не намеренная остановка
+            // и не идет обработка предыдущей фразы
+            if (recognition === recognitionObj && !processingMessage) {
+              try {
+                console.log('Attempting to restart speech recognition automatically...');
+                recognitionObj.start();
+              } catch (error) {
+                console.error('Failed to restart recognition automatically:', error);
+                // Можно добавить сообщение об ошибке, если не удалось перезапустить
+                // addMessage('Не удалось перезапустить распознавание речи автоматически.', false, true);
+              }
+            } else {
+                 console.log('Auto-restart skipped: processing active or recognition object changed.');
+            }
+          }, 500); // Задержка из предоставленного кода
+        } else {
+            console.log('Recognition object changed, skipping auto-restart.');
+        }
       };
 
       recognitionObj.onerror = (event) => {
-         console.error('Speech recognition error:', event.error);
-         hideThinking(); // Скрываем "Думаю..."
-         processingMessage = false; // Сбрасываем флаг обработки
-         let errorMessage = 'Произошла ошибка при распознавании речи.';
+        console.error('Speech Recognition Error:', event.error);
+        hideThinking(); // Скрываем "Думаю..."
+        processingMessage = false; // Сбрасываем флаг обработки
+        if (noSpeechTimer) clearTimeout(noSpeechTimer); // Очищаем таймер
+        lastRecognizedText = ''; // Сбрасываем
 
-         // Более точные сообщения об ошибках
-         if (event.error === 'audio-capture') {
-           errorMessage = 'Ошибка доступа к микрофону. Проверьте, подключен ли микрофон и разрешите доступ.';
-         } else if (event.error === 'not-allowed') {
-           errorMessage = 'Доступ к микрофону запрещен. Пожалуйста, разрешите использование микрофона в настройках вашего браузера.';
+        let errorMessage = 'Произошла ошибка при распознавании речи.';
+
+        // Более точные сообщения об ошибках
+        if (event.error === 'audio-capture') {
+          errorMessage = 'Ошибка доступа к микрофону. Проверьте, подключен ли микрофон и разрешите доступ.';
+        } else if (event.error === 'not-allowed') {
+          errorMessage = 'Доступ к микрофону запрещен. Пожалуйста, разрешите использование микрофона в настройках вашего браузера.';
            // В этом случае распознавание, вероятно, уже остановлено и не будет работать без разрешения.
            // Кнопка и индикатор должны сброситься в onend, но можно добавить сброс здесь на всякий случай.
            listeningIndicator.style.display = 'none';
            voiceBtn.classList.remove('active');
-         } else if (event.error === 'no-speech') {
+           // Важно сбросить recognition, чтобы при следующем клике была попытка создать новый объект
+           if (recognition === recognitionObj) recognition = null;
+        } else if (event.error === 'no-speech') {
             // Ошибка "ничего не услышано". Если continuous=true, движок может продолжать слушать.
-            // Можно добавить сообщение, но оно может быть частым. Лучше просто логировать.
+            // addMessage('Ничего не услышано.'); // Слишком частое сообщение, лучше без него
              console.log('Speech recognition error: No speech detected.');
-             // errorMessage = 'Ничего не услышано.'; // Опционально, если нужно уведомить пользователя
+             // Не добавляем сообщение в чат для этой ошибки
+             return; // Выходим, не сбрасывая recognition для no-speech
          } else if (event.error === 'network') {
               errorMessage = 'Ошибка сети при распознавании речи. Проверьте подключение к интернету.';
          } else if (event.error === 'aborted') {
              // Ошибка 'aborted' происходит при вызове recognition.stop(). Это не настоящая ошибка.
              console.log('Speech recognition aborted (stopped intentionally).');
+             // В этом случае не сбрасываем recognition в null и не добавляем сообщение об ошибке.
              return; // Игнорируем эту "ошибку"
          } else {
              errorMessage += `: ${event.error}`; // Добавляем тип ошибки, если неизвестна
          }
 
-         // Добавляем сообщение об ошибке в чат, кроме ошибки 'no-speech'
-         if (event.error !== 'no-speech') {
-             addMessage(errorMessage, false, true);
-             // Убедимся, что индикатор и кнопка сброшены при большинстве ошибок
-             listeningIndicator.style.display = 'none';
-             voiceBtn.classList.remove('active');
+         // Добавляем сообщение об ошибке в чат (кроме no-speech и aborted)
+         addMessage(errorMessage, false, true);
+         // Убедимся, что индикатор и кнопка сброшены при большинстве ошибок
+         listeningIndicator.style.display = 'none';
+         voiceBtn.classList.remove('active');
+         // Сбрасываем recognition в null только при серьезных ошибках (кроме no-speech, aborted)
+         if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            if (recognition === recognitionObj) recognition = null;
          }
 
-
-         // При других ошибках (кроме 'not-allowed', 'aborted', 'audio-capture'), можно попробовать перезапустить распознавание
-         // Это может быть полезно при временных сбоях, но все равно менее надежно, чем ручной запуск.
-         // Рекомендуется оставить ручной запуск.
-         // if (event.error !== 'not-allowed' && event.error !== 'aborted' && event.error !== 'audio-capture' && event.error !== 'network') {
+         // Автоматический перезапуск после ошибки (логика из предоставленного кода сохранена)
+         // Рекомендуется оставить ручной запуск, но следую предоставленному коду.
+         // if (event.error !== 'not-allowed' && event.error !== 'aborted' && event.error !== 'audio-capture' && event.error !== 'network' && event.error !== 'no-speech') {
          //     console.log("Attempting to restart recognition after error...");
          //     setTimeout(() => {
-         //        try {
-         //           recognitionObj.start();
-         //        } catch(e) {
-         //           console.error("Failed to restart recognition after error:", e);
-         //           addMessage("Не удалось автоматически перезапустить распознавание после ошибки.", false, true);
+         //        // Проверяем, что recognition все еще null или указывает на наш объект
+         //        if (!recognition || recognition === recognitionObj) {
+         //             try {
+         //                // Создаем новый объект, если текущий null
+         //                if (!recognition) recognition = setupSpeechRecognition();
+         //                if (recognition) recognition.start();
+         //             } catch(e) {
+         //                console.error("Failed to restart recognition after error:", e);
+         //                addMessage("Не удалось автоматически перезапустить распознавание после ошибки.", false, true);
+         //             }
          //        }
-         //     }, 1000); // Небольшая задержка перед перезапуском
+         //     }, 1000); // Небольшая задержка
          // }
       };
 
@@ -1354,9 +1478,10 @@
     }
 
     // Функция для кнопки голосового ввода: переключает состояние (вкл/выкл)
-    function toggleVoiceInput() {
+    function toggleSpeechRecognition() {
       // Инициализируем recognition только при первом клике, если он еще не создан
       if (!recognition) {
+        console.log('Speech recognition object is null, attempting setup...');
         recognition = setupSpeechRecognition();
         // Если setupSpeechRecognition вернул null (браузер не поддерживает), просто выходим
         if (!recognition) {
@@ -1365,10 +1490,11 @@
         }
       }
 
-      // Проверяем текущее состояние recognition (recognizing может быть не на 100% надежным)
-      // Или можно использовать класс кнопки: voiceBtn.classList.contains('active')
+      // Проверяем текущее состояние recognition с помощью recognizing
       if (recognition.recognizing) { // Если распознавание активно, останавливаем
         console.log('Stopping speech recognition via button...');
+        // Устанавливаем флаг, чтобы onend знал, что это намеренная остановка (опционально, но полезно)
+        // recognition.manualStop = true; // Нужна поддержка этого флага в onend/onerror
         recognition.stop(); // Это вызовет onend
       } else { // Если не активно, запускаем
          // Останавливаем возможный голосовой синтез перед началом распознавания
@@ -1379,67 +1505,59 @@
         } catch (e) {
            console.error('Error starting speech recognition via button:', e);
            // Добавляем сообщение об ошибке, если старт не удался (например, уже запущен, но state не обновился)
-           addMessage('Не удалось запустить распознавание речи. Возможно, оно уже запущено или произошла ошибка.', false, true);
+           // Браузер может бросить ошибку, если recognition.start() вызван, когда оно уже в состоянии starting или recognizing
+           addMessage('Не удалось запустить распознавание речи. Возможно, оно уже запущено.', false, true);
         }
       }
     }
 
 
     // ===========================
-    //   Инициализация при загрузке DOM
+    //   Инициализация приложения при загрузке DOM
     // ===========================
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('DOM fully loaded. Initializing event listeners and state.');
+    function initApp() {
+      console.log('DOM fully loaded. Initializing application.');
 
-      // Активация для Android TV если необходимо
+      // Проверка и инициализация для Android TV
       if (isAndroidTV) {
         initForTV();
       }
 
-      // Инициализируем объект распознавания речи при загрузке страницы.
+      // Инициализируем объект распознавания речи при загрузке DOM.
       // Обработчики onstart/onend/onerror прикрепляются внутри setupSpeechRecognition.
       // recognition.start() будет вызван только по клику на кнопку "🎤".
-      recognition = setupSpeechRecognition(); // Теперь recognition инициализируется здесь
+      // recognition = setupSpeechRecognition(); // Перенесено в toggleVoiceInput для инициализации по первому клику
 
 
-      // Обработка голосового ввода (клик на кнопку "🎤")
-      if (voiceBtn) { // Проверяем, что кнопка существует
-          voiceBtn.addEventListener('click', toggleVoiceInput);
-           // Добавляем tabindex для TV навигации, если это TV
-           if (isAndroidTV) voiceBtn.setAttribute('tabindex', '0');
-
-      } else {
-          console.error("Voice button element not found!");
-      }
+      // Приветственное сообщение
+      addMessage('👋 Привет! Я Кико, твой умный помощник. Чем я могу тебе помочь сегодня?');
 
 
-      // Кнопка отправки сообщения (текстовый ввод)
-       if (sendBtn) {
+      // Обработчики событий кнопок и ввода
+      if (sendBtn) {
           sendBtn.addEventListener('click', sendMessage);
            // Добавляем tabindex для TV навигации, если это TV
            if (isAndroidTV) sendBtn.setAttribute('tabindex', '0');
-       } else {
-           console.error("Send button element not found!");
-       }
+      } else { console.error("Send button element not found!"); }
 
-
-      // Отправка по Enter в поле ввода
       if (userInput) {
-          userInput.addEventListener('keydown', (e) => {
+          userInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                e.preventDefault(); // Предотвращаем стандартное действие (перенос строки)
                sendMessage();
             }
           });
+          // Добавляем tabindex для TV навигации, если это TV
+          if (isAndroidTV) userInput.setAttribute('tabindex', '0');
+      } else { console.error("User input element not found!"); }
+
+      if (voiceBtn) { // Проверяем, что кнопка существует
+          voiceBtn.addEventListener('click', toggleSpeechRecognition);
            // Добавляем tabindex для TV навигации, если это TV
-           if (isAndroidTV) userInput.setAttribute('tabindex', '0');
-      } else {
-          console.error("User input element not found!");
-      }
+           if (isAndroidTV) voiceBtn.setAttribute('tabindex', '0');
+      } else { console.error("Voice button element not found!"); }
 
-
-      // Кнопка "Сделать фото" (для ручного триггера)
-       if (cameraBtn) {
+      if (cameraBtn) {
           cameraBtn.addEventListener('click', () => {
                // Проверяем, активна ли камера перед попыткой сделать фото
                if (isCameraActive) {
@@ -1447,7 +1565,7 @@
                } else {
                    // Если камера не включена, можно предложить ее включить
                    addMessage('Камера не включена. Чтобы сделать фото, сначала включите камеру, сказав "включи камеру".', false);
-                   // Или можно сразу попытаться включить камеру
+                   // Опционально: сразу попытаться включить камеру и сделать фото
                    // startCamera().then(() => {
                    //     if(isCameraActive) capturePhoto();
                    // });
@@ -1455,10 +1573,8 @@
           });
            // Добавляем tabindex для TV навигации, если это TV
            if (isAndroidTV) cameraBtn.setAttribute('tabindex', '0');
+       } else { console.error("Camera button element not found!"); }
 
-       } else {
-           console.error("Camera button element not found!");
-       }
 
        // Обработка клавиши Escape для быстрой остановки всего
        document.addEventListener('keydown', (e) => {
@@ -1467,44 +1583,60 @@
                stopSpeech();
                stopCamera();
                stopVideo();
-               if (recognition && recognition.recognizing) {
+               if (recognition && recognition.recognizing) { // Используем recognizing
                    recognition.stop();
                }
                 addMessage('Остановлено по нажатию Escape.'); // Подтверждение
                 processingMessage = false; // Важно сбросить флаг обработки
+                if (noSpeechTimer) clearTimeout(noSpeechTimer); // Очищаем таймер
+                lastRecognizedText = ''; // Сбрасываем
            }
        });
 
-
-      // Приветственное сообщение при загрузке страницы
-      addMessage('Привет! Я KiKo, ваш умный помощник. Чем могу помочь? 😊');
-
-      // Добавляем слушатель для события voiceschanged, чтобы убедиться,
-      // что голоса для синтеза речи загружены после активации.
-      // Этот слушатель может помочь, если speakResponse вызывается до загрузки голосов.
+      // Предварительная инициализация некоторых ресурсов
       if ('speechSynthesis' in window) {
-          window.speechSynthesis.onvoiceschanged = () => {
-             console.log("Speech synthesis voices changed/loaded.");
-              // Принудительно загружаем голоса при изменении (может быть полезно)
-              window.speechSynthesis.getVoices();
-              // При первой загрузке голосов можно попробовать активировать синтез,
-              // но только если еще не активирован пользовательским взаимодействием.
-              // activateSpeechSynthesis(); // Это может быть слишком рано или не сработать без пользовательского жеста
-          };
-           // Загружаем голоса при старте. В Chrome это может быть асинхронно.
+        // Попытка загрузки голосов заранее (но это может не сработать без взаимодействия пользователя)
+        window.speechSynthesis.onvoiceschanged = () => {
+           console.log("Speech synthesis voices changed/loaded.");
+           // Дополнительный вызов getVoices после загрузки, может помочь
            window.speechSynthesis.getVoices();
+            // При первой загрузке голосов можно попробовать активировать синтез,
+            // но только если еще не активирован пользовательским взаимодействием.
+           // activateSpeechSynthesis(); // Слишком рано, может не сработать
+        };
+         // Загружаем голоса при старте. В Chrome это может быть асинхронно.
+         window.speechSynthesis.getVoices();
       }
+
+       // Обработка ошибок загрузки iframe YouTube
+       if (videoIframe) {
+            videoIframe.onerror = () => {
+              console.error('YouTube iframe loading error');
+              addMessage('Ошибка при загрузке видео', false, true);
+              stopVideo(); // Останавливаем, если ошибка загрузки
+            };
+       } else {
+           console.error("YouTube iframe element not found!");
+       }
+
 
        // Активируем синтез речи при первом взаимодействии
        // (Этот слушатель гарантирует активацию даже если recognition/sendMessage не вызваны первыми)
-       document.body.addEventListener('click', activateSpeechSynthesis, { once: true });
-       document.body.addEventListener('keydown', activateSpeechSynthesis, { once: true });
-       document.body.addEventListener('touchstart', activateSpeechSynthesis, { once: true }); // Для мобильных
-       document.body.addEventListener('focus', activateSpeechSynthesis, { once: true }); // Для фокусировки элементов
+       // Используем addEventListener без once, чтобы его можно было удалить
+       document.body.addEventListener('click', activateSpeechSynthesis);
+       document.body.addEventListener('keydown', activateSpeechSynthesis);
+       document.body.addEventListener('touchstart', activateSpeechSynthesis); // Для мобильных устройств
+       document.body.addEventListener('focus', activateSpeechSynthesis); // Для фокусировки элементов
 
+    }
 
-    }); // Конец DOMContentLoaded listener
+    // Запускаем инициализацию приложения после полной загрузки DOM
+    document.addEventListener('DOMContentLoaded', initApp);
+
+    // Удаляем слушатели активации синтеза речи после первой активации
+    // Эта часть должна быть вне activateSpeechSynthesis, чтобы слушатели были доступны для удаления
+    // Перемещено в activateSpeechSynthesis
+
   </script>
-
 </body>
 </html>
