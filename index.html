@@ -293,15 +293,15 @@
       // Предполагается использование Gemini, как вы указали.
       // Замените на ваш реальный ключ Gemini.
       GEMINI_API_KEY: (location.hostname === 'localhost' || isGithubPages) 
-          ? 'ВАШ_API_КЛЮЧ_GEMINI' // <-- Замените на ваш ключ Gemini!
+          ? 'AIzaSyB0nsn5A_a6nAtGQsIZ-RZGrotGoCJaF8A' // <-- Замените на ваш ключ Gemini!
           : '', // Не используем ключ на других доменах для безопасности
       // Замените на ваш реальный ключ YouTube Data API.
       YOUTUBE_API_KEY: (location.hostname === 'localhost' || isGithubPages)
-          ? 'ВАШ_API_КЛЮЧ_YOUTUBE' // <-- Замените на ваш ключ YouTube!
+          ? 'AIzaSyDt1cRmHyYNEPnu78Wt4Y_RgXNhKwD2Q44' // <-- Замените на ваш ключ YouTube!
           : '' // Не используем ключ на других доменах для безопасности
     };
      // Проверка, что ключи заменены (простая проверка, можно удалить после замены)
-     if (config.GEMINI_API_KEY === 'ВАШ_API_КЛЮЧ_GEMINI' || config.YOUTUBE_API_KEY === 'ВАШ_API_КЛЮЧ_YOUTUBE') {
+     if (config.GEMINI_API_KEY === 'AIzaSyB0nsn5A_a6nAtGQsIZ-RZGrotGoCJaF8A' || config.YOUTUBE_API_KEY === 'AIzaSyDt1cRmHyYNEPnu78Wt4Y_RgXNhKwD2Q44') {
         console.warn("ВНИМАНИЕ: API ключи не заменены на реальные! Функционал AI и YouTube не будет работать. Замените ЗАГЛУШКИ в коде на ваши ключи.");
      }
 
