@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -8,12 +7,12 @@
   <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
   <!-- Permissions-Policy — новый синтаксис -->
   <meta name="permissions-policy" content="microphone=(self), camera=(self)">
-  <!-- (Оставляем CORS-мета, если нужно настроить на сервере) -->
+  <!-- CORS-мета -->
   <meta http-equiv="Access-Control-Allow-Origin" content="*">
   <meta http-equiv="Access-Control-Allow-Methods" content="GET, POST, OPTIONS">
   <meta http-equiv="Access-Control-Allow-Headers" content="Content-Type, Authorization">
 
-  <title>KiKo - Intelligent Chat Assistant</title>
+  <title>KiKo Beam - Intelligent Chat Assistant</title>
 
   <style>
     :root {
@@ -37,6 +36,18 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
+    }
+    .header {
+      background-color: var(--panel-bg);
+      padding: 10px 20px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+    .header h1 {
+      margin: 0;
+      color: var(--accent-color);
+      font-size: 1.5rem;
     }
     .app-container {
       display: flex;
@@ -103,13 +114,21 @@
       color: var(--text-primary);
       border-radius: 5px;
     }
-    #send-btn, #voice-btn {
+    #send-btn, #voice-btn, #restart-mic-btn, #voice-config-btn {
       background-color: var(--secondary-color);
       color: var(--bg-primary);
       border: none;
       padding: 10px 15px;
       border-radius: 5px;
       cursor: pointer;
+    }
+    #restart-mic-btn {
+      background-color: #ff6b6b;
+      color: white;
+    }
+    #voice-config-btn {
+      background-color: #777;
+      color: white;
     }
     #voice-btn.active {
       background-color: red;
@@ -125,6 +144,30 @@
       top: 15px;
       right: 15px;
       display: none;
+    }
+    #volume-meter {
+      display: none; 
+      width: 150px; 
+      height: 15px; 
+      background: #333; 
+      position: absolute; 
+      top: 40px; 
+      right: 15px; 
+      border-radius: 7px; 
+      overflow: hidden;
+    }
+    #volume-level {
+      height: 100%; 
+      width: 0%; 
+      background: linear-gradient(to right, green, yellow, red); 
+      transition: width 0.1s;
+    }
+    .recognition-status {
+      font-size: 12px;
+      color: #aaa;
+      position: absolute;
+      top: 15px;
+      left: 15px;
     }
     @keyframes pulse {
       0% { opacity: 1; }
@@ -142,10 +185,11 @@
       border-radius: var(--border-radius);
       padding: 10px;
       box-shadow: 0 0 10px rgba(0,0,0,0.3);
-      flex: 1;
+      height: calc(50% - 5px);
       display: flex;
       flex-direction: column;
       position: relative;
+      overflow: hidden;
     }
     .media-container h4 {
       margin-bottom: 10px;
@@ -161,6 +205,7 @@
     #camera-area.active,
     #video-area.active {
       display: flex;
+      flex-direction: column;
     }
     #camera-preview {
       width: 100%;
@@ -183,6 +228,22 @@
       border-radius: var(--border-radius);
       border: none;
     }
+    /* Стили для контроля YouTube */
+    .youtube-controls {
+      display: flex;
+      gap: 5px;
+      margin-top: 5px;
+    }
+    .youtube-controls button {
+      flex: 1;
+      padding: 5px 10px;
+      background-color: var(--accent-color);
+      color: black;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+    }
     /* Android-TV */
     @media (hover: none) {
       #send-btn, #voice-btn {
@@ -199,7 +260,7 @@
       }
     }
   </style>
-
+  
   <script>
     /* --- HTTPS редирект --- */
     if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
@@ -222,17 +283,22 @@
       document.querySelectorAll('button').forEach(btn => btn.setAttribute('tabindex', '0'));
       userInput.setAttribute('tabindex', '0');
     }
-
-    if (isAndroidTV) initForTV();   /* вызов */
-
   </script>
 </head>
 
 <body>
+  <div class="header">
+    <h1>KiKo Beam</h1>
+  </div>
+  
   <div class="app-container">
     <!-- Чат -->
     <div class="chat-panel">
       <div id="listening-indicator"></div>
+      <div id="volume-meter">
+        <div id="volume-level"></div>
+      </div>
+      <div class="recognition-status" id="recognition-status"></div>
       <div id="chat-container"></div>
       <div id="input-container">
         <input type="text" id="user-input" placeholder="Введите сообщение..."/>
@@ -253,7 +319,11 @@
       <div class="media-container">
         <h4>YouTube</h4>
         <div id="video-area">
-          <iframe allow="autoplay; encrypted-media"></iframe>
+          <iframe id="youtube-iframe" allow="autoplay; encrypted-media"></iframe>
+          <div class="youtube-controls">
+            <button id="youtube-play">▶️ Воспроизвести</button>
+            <button id="youtube-search">🔍 Новый поиск</button>
+          </div>
         </div>
       </div>
     </div>
@@ -274,21 +344,26 @@
       YOUTUBE_API_KEY: (location.hostname === 'localhost' || location.hostname.includes('github.io'))
           ? 'AIzaSyDt1cRmHyYNEPnu78Wt4Y_RgXNhKwD2Q44' : ''
     };
-
-    /* --- Переменные состояния --- */
+	
+	/* --- Переменные состояния --- */
     let chatHistory = [];
     const chatContainer = document.getElementById('chat-container');
     const userInput     = document.getElementById('user-input');
     const sendBtn       = document.getElementById('send-btn');
     const voiceBtn      = document.getElementById('voice-btn');
     const listeningIndicator = document.getElementById('listening-indicator');
+    const volumeMeter = document.getElementById('volume-meter');
+    const volumeLevel = document.getElementById('volume-level');
+    const recognitionStatus = document.getElementById('recognition-status');
 
     const cameraArea    = document.getElementById('camera-area');
     const cameraPreview = document.getElementById('camera-preview');
     const cameraBtn     = document.getElementById('camera-btn');
 
     const videoArea     = document.getElementById('video-area');
-    const videoIframe   = videoArea.querySelector('iframe');
+    const videoIframe   = document.getElementById('youtube-iframe');
+    const youtubePlayBtn = document.getElementById('youtube-play');
+    const youtubeSearchBtn = document.getElementById('youtube-search');
 
     let recognition = null;
     let currentSpeechSynthesis = null;
@@ -302,15 +377,45 @@
     let lastPhotoDataUrl = null;
     let lastVideoBlobUrl = null;
     let lastYouTubeUrl = null;
+    let lastYouTubeQuery = '';
     let thinkingMessageDiv = null;
     let isSpeaking = false;
     let noSpeechTimer = null;
+    let restartRecognitionTimer = null;
     let retryCount = 0;
     const MAX_RETRIES = 3;
+    
+    // Переменные для улучшенной логики YouTube и голосовых команд
+    let waitingForYouTubeQuery = false;
+    let speechRecognitionPause = false;
+    let speechFinalTimeout = null;
+    let recognitionInProgress = false;
+    let forceMicRestart = false;
+    
+    // Новые переменные для состояния системы
+    let youtubePlayerState = 'stopped'; // 'playing', 'paused', 'stopped'
+    let lastCommand = ''; // Хранение последней команды для контекста
+    let audioContext = null;
+    let analyser = null;
+    let microphone = null;
+    let audioStream = null;
+    let speechActivated = false;
 
     /* --- Утилиты --- */
+    // Улучшенная функция удаления эмодзи для полного подавления их озвучивания
     function stripEmojis(text) {
-      return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]/gu, '');
+      // Более агрессивное удаление эмодзи и смайликов
+      const cleanText = text
+        // Удаляем Unicode эмодзи
+        .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2B00}-\u{2BFF}]/gu, '')
+        // Удаляем текстовые смайлики
+        .replace(/[:;]-?[)D(PpOo]/g, '') 
+        // Удаляем эмодзи на основе Unicode комбинаций
+        .replace(/[\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}]/gu, '')
+        // Дополнительная очистка от распространенных символов эмодзи 
+        .replace(/[❤✨🙏👍👋👏]/gu, '');
+        
+      return cleanText;
     }
 
     function addMessage(text, isUser=false, isError=false) {
@@ -336,46 +441,110 @@
       chatContainer.appendChild(thinkingMessageDiv);
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
+    
     function hideThinking() {
       if (thinkingMessageDiv && thinkingMessageDiv.parentNode)
         thinkingMessageDiv.parentNode.removeChild(thinkingMessageDiv);
       thinkingMessageDiv = null;
     }
+    
     function stopSpeech() {
       if (currentSpeechSynthesis) {
         window.speechSynthesis.cancel();
         currentSpeechSynthesis = null;
       }
+      isSpeaking = false;
     }
 
-    window.speechSynthesis.onvoiceschanged = () => {}; // инициализация голосов
+    // Обновление статуса распознавания
+    function updateRecognitionStatus(status) {
+      recognitionStatus.textContent = status;
+    }
 
+    // Активация голосового синтеза для браузеров
+    function activateSpeechSynthesis() {
+      if (!speechActivated && 'speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(' ');
+        // Устанавливаем низкую громкость для беззвучной активации
+        utterance.volume = 0.1;
+        window.speechSynthesis.speak(utterance);
+        speechActivated = true;
+      }
+    }
+	
+	// Улучшенная функция синтеза речи
     function speakResponse(text) {
       hideThinking();
       stopSpeech();
       if (!('speechSynthesis' in window)) return;
+      
       try {
-        const utterance = new SpeechSynthesisUtterance(stripEmojis(text));
+        // Остановка распознавания речи перед началом синтеза
+        if (recognition && recognition._isRunning) {
+          recognition.stop();
+          // Отмечаем что остановка временная
+          recognition._tempStop = true;
+        }
+        
+        // Более агрессивная очистка от эмодзи
+        const cleanText = stripEmojis(text);
+        console.log("Оригинальный текст:", text);
+        console.log("Очищенный текст для озвучки:", cleanText);
+        
+        const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.lang = 'ru-RU';
-        utterance.rate = 1.5;
-        const ruVoice = window.speechSynthesis.getVoices()
-                         .find(v => v.lang.startsWith('ru'));
-        if (ruVoice) utterance.voice = ruVoice;
+        utterance.rate = 1.2; // Немного снизим скорость для лучшей разборчивости
+        
+        // Попытка получить русский голос
+        const voices = window.speechSynthesis.getVoices();
+        const ruVoice = voices.find(v => v.lang.startsWith('ru'));
+        if (ruVoice) {
+          console.log("Найден русский голос:", ruVoice.name);
+          utterance.voice = ruVoice;
+        } else {
+          console.log("Русский голос не найден, используем голос по умолчанию");
+        }
+        
         isSpeaking = true;
-        utterance.onend = () => { isSpeaking = false; };
+        updateRecognitionStatus('Говорю...');
+        
+        utterance.onend = () => { 
+          isSpeaking = false;
+          updateRecognitionStatus('Готов слушать');
+          
+          // Перезапуск распознавания после окончания говорения
+          setTimeout(() => {
+            if (recognition && !recognition._isRunning && !recognition._manualStop) {
+              console.log("Перезапуск распознавания после озвучки");
+              try { 
+                recognition.start(); 
+              } catch(e) { 
+                console.error("Ошибка перезапуска после речи:", e); 
+              }
+            }
+          }, 500);
+        };
+        
         currentSpeechSynthesis = utterance;
         window.speechSynthesis.speak(utterance);
       } catch(err) {
         console.error('Speech synthesis error:', err);
+        isSpeaking = false;
+        updateRecognitionStatus('Ошибка озвучивания');
       }
     }
 
     /* --- Камера --- */
     async function startCamera() {
-      if (isCameraActive) { stopCamera(); return; }
+      if (isCameraActive) { 
+        stopCamera(); 
+        return; 
+      }
+      
       try {
         cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: {width:{ideal:1280}, height:{ideal:720}}, audio:true
+          video: {width:{ideal:1280}, height:{ideal:720}}, 
+          audio: true
         });
         cameraPreview.srcObject = cameraStream;
         cameraArea.classList.add('active');
@@ -383,9 +552,10 @@
         addMessage('Камера включена');
       } catch(err) {
         console.error('Camera error:', err);
-        addMessage('Не удалось получить доступ к камере.', false, true);
+        addMessage('Не удалось получить доступ к камере. Проверьте разрешения.', false, true);
       }
     }
+    
     function stopCamera() {
       if (cameraStream) {
         cameraStream.getTracks().forEach(t => t.stop());
@@ -396,202 +566,1235 @@
       isCameraActive = false;
       addMessage('Камера выключена');
     }
+    
     function capturePhoto() {
-      if (!cameraStream) { addMessage('Камера не включена', false, true); return; }
+      if (!cameraStream) { 
+        addMessage('Камера не включена', false, true); 
+        return; 
+      }
+      
       const canvas = document.createElement('canvas');
       canvas.width = cameraPreview.videoWidth;
       canvas.height = cameraPreview.videoHeight;
-      canvas.getContext('2d').drawImage(cameraPreview,0,0,canvas.width,canvas.height);
+      canvas.getContext('2d').drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
       lastPhotoDataUrl = canvas.toDataURL('image/jpeg');
+      
       const img = document.createElement('img');
       img.src = lastPhotoDataUrl;
-      img.style.maxWidth='100%'; img.style.maxHeight='200px';
+      img.style.maxWidth='100%'; 
+      img.style.maxHeight='200px';
+      
       const dl = document.createElement('button');
       dl.textContent='Скачать фото';
       dl.style.marginLeft='10px';
       dl.onclick = () => {
-        const a=document.createElement('a'); a.href=lastPhotoDataUrl; a.download='photo.jpg'; a.click(); };
-      const msg=addMessage('Сделано фото:'); msg.appendChild(img); msg.appendChild(dl);
+        if (!lastPhotoDataUrl) {
+          addMessage('Нет сохранённого фото', false, true);
+          return;
+        }
+        const a = document.createElement('a'); 
+        a.href = lastPhotoDataUrl; 
+        a.download = 'photo.jpg'; 
+        a.click(); 
+      };
+      
+      const msg = addMessage('Сделано фото:'); 
+      msg.appendChild(img); 
+      msg.appendChild(dl);
     }
 
     /* --- Видео --- */
     function startRecording() {
-      if (!cameraStream) { addMessage('Камера не включена',false,true); return; }
+      if (!cameraStream) { 
+        addMessage('Камера не включена, не могу начать запись', false, true); 
+        return; 
+      }
+      
       mediaRecorder = new MediaRecorder(cameraStream);
-      recordedChunks=[]; mediaRecorder.ondataavailable=e=>e.data.size&&recordedChunks.push(e.data);
-      mediaRecorder.onstop = () => {
-        const blob=new Blob(recordedChunks,{type:'video/mp4'});
-        lastVideoBlobUrl = URL.createObjectURL(blob);
-        const dl=document.createElement('button');
-        dl.textContent='Скачать видео';
-        dl.onclick=()=>{
-          const a=document.createElement('a'); a.href=lastVideoBlobUrl; a.download='video.mp4'; a.click();};
-        addMessage('Видео записано:').appendChild(dl);
+      recordedChunks = []; 
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
       };
-      mediaRecorder.start(); isRecording=true; addMessage('Начата запись видео');
+      
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, {type: 'video/mp4'});
+        lastVideoBlobUrl = URL.createObjectURL(blob);
+        
+        const dl = document.createElement('button');
+        dl.textContent = 'Скачать видео';
+        dl.onclick = () => {
+          if (!lastVideoBlobUrl) {
+            addMessage('Нет записанного видео', false, true);
+            return;
+          }
+          const a = document.createElement('a'); 
+          a.href = lastVideoBlobUrl; 
+          a.download = 'video.mp4'; 
+          a.click();
+        };
+        
+        const msg = addMessage('Видео записано:');
+        msg.appendChild(dl);
+      };
+      
+      mediaRecorder.start(); 
+      isRecording = true; 
+      addMessage('Начата запись видео');
     }
+    
     function stopRecording() {
-      if (!mediaRecorder || !isRecording) { addMessage('Видео не пишется',false,true); return; }
-      mediaRecorder.stop(); isRecording=false; addMessage('Остановлена запись видео');
+      if (!mediaRecorder || !isRecording) { 
+        addMessage('Видео не записывается в данный момент.', false, true); 
+        return; 
+      }
+      
+      mediaRecorder.stop(); 
+      isRecording = false; 
+      addMessage('Остановлена запись видео');
+    }
+	
+	/* --- YouTube функции --- */
+    // Функция поиска YouTube 
+    async function searchYouTube(query, isReplay = false) {
+      if (!config.YOUTUBE_API_KEY) return null;
+      
+      try {
+        // Если это запрос воспроизведения предыдущего видео
+        if (isReplay && lastYouTubeUrl) {
+          return lastYouTubeUrl;
+        }
+        
+        // Улучшаем запрос для более точного поиска
+        const enhancedQuery = query + (!query.toLowerCase().includes('музык') ? ' документальный фильм' : '');
+        console.log("Поиск YouTube:", enhancedQuery);
+        
+        const res = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(enhancedQuery)}&type=video&key=${config.YOUTUBE_API_KEY}&maxResults=5&relevanceLanguage=ru`
+        );
+        
+        // Проверяем на ошибку 401 (неавторизованный доступ)
+        if (res.status === 401) {
+          console.error('Ошибка авторизации YouTube API (401)');
+          addMessage('Не удалось подключиться к YouTube API. Проверьте API-ключ.', false, true);
+          return null;
+        }
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ошибка! Статус: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        
+        if (!data.items || data.items.length === 0) {
+          console.log("Результаты не найдены. Пробуем более простой запрос");
+          const simpleRes = await fetch(
+            `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${config.YOUTUBE_API_KEY}&maxResults=5`
+          );
+          
+          if (!simpleRes.ok) {
+            throw new Error(`HTTP ошибка при простом запросе! Статус: ${simpleRes.status}`);
+          }
+          
+          const simpleData = await simpleRes.json();
+          if (simpleData.items?.[0]) return `https://www.youtube.com/watch?v=${simpleData.items[0].id.videoId}`;
+          return null;
+        }
+        
+        // Находим наиболее подходящий результат
+        const isMusicQuery = query.toLowerCase().includes('музык') || 
+                            query.toLowerCase().includes('песн') || 
+                            query.toLowerCase().includes('клип');
+        
+        let bestResult = data.items[0];
+        
+        // Если запрос не о музыке, пробуем найти более подходящее видео
+        if (!isMusicQuery) {
+          // Ищем первое видео, которое не похоже на музыкальный клип
+          const nonMusicVideo = data.items.find(item => {
+            const title = item.snippet.title.toLowerCase();
+            const channel = item.snippet.channelTitle.toLowerCase();
+            
+            // Исключаем очевидные музыкальные видео
+            return !title.includes('клип') && 
+                  !title.includes('music video') && 
+                  !title.includes('official video') &&
+                  !channel.includes('music') &&
+                  !channel.includes('vevo');
+          });
+          
+          if (nonMusicVideo) {
+            bestResult = nonMusicVideo;
+            console.log("Найдено немузыкальное видео:", bestResult.snippet.title);
+          }
+        }
+        
+        return `https://www.youtube.com/watch?v=${bestResult.id.videoId}`;
+      } catch(err) {
+        console.error('YouTube API error:', err);
+        addMessage('Ошибка при поиске видео на YouTube. Попробуйте позже.', false, true);
+        return null;
+      }
     }
 
-    /* --- Gemini & YouTube --- */
+    // Функции управления YouTube
+    function playVideo(url) {
+      if(!url) return false;
+      
+      videoArea.classList.add('active');
+      // Запускаем с autoplay=1 и enablejsapi=1 для управления через API
+      const embedUrl = url.replace('watch?v=', 'embed/') + '?autoplay=1&enablejsapi=1';
+      videoIframe.src = embedUrl;
+      youtubePlayerState = 'playing';
+      console.log("Загружено видео:", embedUrl);
+      return true;
+    }
+
+    // Функция для остановки видео
+    function stopYouTubeVideo() {
+      if (!lastYouTubeUrl) return false;
+      
+      try {
+        if (videoIframe.contentWindow) {
+          // Используем postMessage для управления плеером
+          videoIframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+          youtubePlayerState = 'paused';
+          return true;
+        }
+      } catch(e) {
+        console.error("Ошибка при остановке видео:", e);
+      }
+      
+      return false;
+    }
+
+    // Функция для продолжения воспроизведения видео
+    function continueYouTubeVideo() {
+      if (!lastYouTubeUrl) return false;
+      
+      try {
+        if (videoIframe.contentWindow) {
+          // Используем postMessage для управления плеером
+          videoIframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+          youtubePlayerState = 'playing';
+          return true;
+        }
+      } catch(e) {
+        console.error("Ошибка при продолжении видео:", e);
+      }
+      
+      return false;
+    }
+
+    // Функция для воспроизведения последнего видео
+    function playCurrentYouTube() {
+      if (lastYouTubeUrl) {
+        playVideo(lastYouTubeUrl);
+        addMessage(`Воспроизводится: "${lastYouTubeQuery}"`);
+      } else {
+        addMessage('Нет доступных видео для воспроизведения');
+      }
+    }
+    
+    // Функция для нового поиска YouTube
+    function initiateNewYouTubeSearch() {
+      waitingForYouTubeQuery = true;
+      addMessage('Какое видео вы хотите посмотреть?');
+    }
+	
+	/* --- Gemini API --- */
     async function getGeminiResponse(text) {
       if (!config.GEMINI_API_KEY) return 'Пожалуйста, настройте API-ключ Gemini';
 
       try {
-        const geminiHistory = chatHistory.map(m=>({
-          role: m.role==='user'?'user':'model',
-          parts:[{text:m.content}]
+        const geminiHistory = chatHistory.map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{text: m.content}]
         }));
 
-        const body={
-          contents:[
-            { role:"model", parts:[{text:`Ты Кико – продвинутый робот-друг семьи.
+        // Улучшенные инструкции для YouTube контекста
+        const videoStatusText = youtubePlayerState === 'playing' 
+            ? `В данный момент воспроизводится видео по запросу "${lastYouTubeQuery}".` 
+            : lastYouTubeQuery 
+                ? `Недавно пользователь смотрел видео на тему "${lastYouTubeQuery}".` 
+                : '';
+        
+        // ПОЛНОСТЬЮ ПЕРЕРАБОТАННЫЕ ИНСТРУКЦИИ ДЛЯ GEMINI!
+        const contextPrompt = `
+          ${videoStatusText}
+          
+          ВАЖНЫЕ ИНСТРУКЦИИ ПО ВИДЕО:
+          1. Я МОГУ ПОКАЗЫВАТЬ ВИДЕО САМОСТОЯТЕЛЬНО сразу после твоего сообщения.
+          2. НИКОГДА не говори фразы типа "Можешь найти видео в YouTube" или "Открой YouTube".
+          3. Если пользователь просит видео, ВСЕГДА отвечай в формате:
+             "Включаю видео про [тема]!" - это ЗАПУСТИТ видео автоматически.
+          4. Примеры правильных ответов:
+             - "Включаю видео про Гарика Харламова! Приятного просмотра! 😄"
+             - "Сейчас найду видео про сказки на ночь!"
+             - "Запускаю видео с танцами!"
+          5. ВАЖНО: После таких ответов видео запустится автоматически!
+          6. Команды для пользователя:
+             - "пауза" или "останови видео" - для паузы
+             - "продолжи видео" или "играй" - для продолжения
+             - "покажи то же видео ещё раз" - для повтора
+        `;
+
+        const body = {
+          contents: [
+            { 
+              role: "model", 
+              parts: [{
+                text: `Ты Кико – продвинутый робот-друг семьи.
 - Дружелюбный тон;
 - Адаптируешься под возраст;
 - Отвечай 1-2 предложениями;
 - Используй эмодзи;
-Если запрос о видео — дай короткую инструкцию открыть YouTube.
-Заверши ответ позитивно.`}]},
+${contextPrompt}
+Заверши ответ позитивно.`
+              }]
+            },
             ...geminiHistory,
             { role:"user", parts:[{text}] }
           ],
-          generationConfig:{temperature:.7,topK:40,topP:.95,maxOutputTokens:1000},
-          safetySettings:[
-            {category:"HARM_CATEGORY_HARASSMENT",threshold:"BLOCK_MEDIUM_AND_ABOVE"},
-            {category:"HARM_CATEGORY_HATE_SPEECH",threshold:"BLOCK_MEDIUM_AND_ABOVE"},
-            {category:"HARM_CATEGORY_SEXUALLY_EXPLICIT",threshold:"BLOCK_MEDIUM_AND_ABOVE"},
-            {category:"HARM_CATEGORY_DANGEROUS_CONTENT",threshold:"BLOCK_MEDIUM_AND_ABOVE"}
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1000
+          },
+          safetySettings: [
+            {category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE"},
+            {category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE"},
+            {category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE"},
+            {category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_MEDIUM_AND_ABOVE"}
           ]
         };
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${config.GEMINI_API_KEY}`,
-          {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}
+          {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+          }
         );
-        if(!res.ok){const err=await res.json();console.error(err);throw new Error(res.status);}
-        const data=await res.json();
+        
+        // Проверка на ошибку 401
+        if (res.status === 401) {
+          console.error('Ошибка авторизации Gemini API (401)');
+          addMessage('Не удалось подключиться к Gemini API. Проверьте API-ключ.', false, true);
+          return 'Ошибка соединения с сервером ИИ. Пожалуйста, проверьте API-ключ и соединение.';
+        }
+        
+        if (!res.ok) {
+          const err = await res.text();
+          console.error('Gemini API error:', err);
+          throw new Error(`HTTP статус: ${res.status}`);
+        }
+        
+        const data = await res.json();
 
-        if(data.candidates?.[0]?.content?.parts?.[0])
+        if (data.candidates?.[0]?.content?.parts?.[0]) {
           return data.candidates[0].content.parts[0].text;
-        if(data.promptFeedback?.blockReason)
+        }
+        
+        if (data.promptFeedback?.blockReason) {
           return `Извините, контент заблокирован: ${data.promptFeedback.blockReason}`;
+        }
+        
         throw new Error('Неожиданный ответ Gemini');
       } catch(err) {
-        console.error('Gemini error:',err);
-        if (retryCount<MAX_RETRIES) {
-          retryCount++; console.log(`Retry ${retryCount}`);
-          return new Promise(r=>setTimeout(async()=>r(await getGeminiResponse(text)),1000));
+        console.error('Gemini error:', err);
+        
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          console.log(`Повторная попытка ${retryCount} из ${MAX_RETRIES}`);
+          return new Promise(r => setTimeout(async () => r(await getGeminiResponse(text)), 1000));
         }
-        retryCount=0; return `Ошибка Gemini: ${err.message}`;
+        
+        retryCount = 0;
+        return `Извините, произошла ошибка при получении ответа. Попробуйте позже или переформулируйте ваш вопрос.`;
       }
     }
 
-    async function searchYouTube(query) {
-      if (!config.YOUTUBE_API_KEY) return null;
-      try {
-        const res=await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${config.YOUTUBE_API_KEY}`);
-        const data=await res.json();
-        if(data.items?.[0]) return `https://www.youtube.com/watch?v=${data.items[0].id.videoId}`;
-        return null;
-      } catch(err){console.error('YT error:',err);return null;}
-    }
-    function playVideo(url) {
-      if(!url) return;
-      videoArea.classList.add('active');
-      videoIframe.src=url.replace('watch?v=','embed/');
-    }
-
-    /* --- Чат --- */
+    /* --- Обработка команд --- */
     async function sendMessage() {
-      const text=userInput.value.trim(); if(!text) return;
-      stopSpeech(); addMessage(text,true);
-      chatHistory.push({role:'user',content:text}); if(chatHistory.length>30) chatHistory.shift();
-      userInput.value=''; showThinking();
-      try { await processCommand(text); } 
-      catch(err){console.error(err); hideThinking(); addMessage('Извините, ошибка',false,true);}
-    }
-
-    async function processCommand(text) {
-      const lower=text.toLowerCase();
-      const photo=['сделай фото','сфотографируй','сделай снимок'];
-      const camOn=['камера','включи камеру'];
-      const camOff=['стоп камера','выключи камеру'];
-      const vidStart=['запусти видео','запиши видео'];
-      const vidStop=['стоп видео','останови видео'];
-      const dlPhoto=['скачай фото','download photo'];
-      const dlVideo=['скачай видео','download video'];
-
-      if(photo.some(t=>lower.includes(t))){hideThinking(); if(!isCameraActive) await startCamera(); capturePhoto(); return;}
-      if(camOn.some(t=>lower.includes(t))){hideThinking(); await startCamera(); return;}
-      if(camOff.some(t=>lower.includes(t))){hideThinking(); stopCamera(); return;}
-      if(vidStart.some(t=>lower.includes(t))){hideThinking(); if(!isCameraActive) await startCamera(); startRecording(); return;}
-      if(vidStop.some(t=>lower.includes(t))){hideThinking(); stopRecording(); return;}
-      if(dlPhoto.some(t=>lower.includes(t))){hideThinking();
-        if(!lastPhotoDataUrl){addMessage('Нет фото',false,true);return;}
-        const a=document.createElement('a');a.href=lastPhotoDataUrl;a.download='photo.jpg';a.click();return;}
-      if(dlVideo.some(t=>lower.includes(t))){hideThinking();
-        if(!lastVideoBlobUrl){addMessage('Нет видео',false,true);return;}
-        const a=document.createElement('a');a.href=lastVideoBlobUrl;a.download='video.mp4';a.click();return;}
-
-      const skip=['как дела','что делаешь','как ты','что нового','привет','как жизнь','как настроение','чем занимаешься'];
-      if(!skip.some(s=>lower.includes(s))){
-        const yt=await searchYouTube(text); if(yt){lastYouTubeUrl=yt; playVideo(yt);}
+      const text = userInput.value.trim(); 
+      if (!text) return;
+      
+      // Приостанавливаем распознавание речи во время обработки команды
+      if (recognition && recognition._isRunning) {
+        recognition._tempStop = true;
+        recognition.stop();
       }
-      const ai=await getGeminiResponse(text);
-      hideThinking(); addMessage(ai); chatHistory.push({role:'assistant',content:ai});
-    }
-
-    /* --- Speech Recognition --- */
-    function setupSpeechRecognition() {
-      if(!('webkitSpeechRecognition' in window)){
-        addMessage('Браузер не поддерживает распознавание речи',false,true);
-        voiceBtn.disabled=true; return null;
+      
+      stopSpeech(); 
+      addMessage(text, true);
+      chatHistory.push({role: 'user', content: text}); 
+      // Ограничиваем историю чата для экономии памяти
+      if (chatHistory.length > 30) chatHistory.shift();
+      userInput.value = ''; 
+      showThinking();
+      
+      try { 
+        await processCommand(text); 
+      } catch(err) {
+        console.error('Ошибка при обработке команды:', err); 
+        hideThinking(); 
+        addMessage('Извините, произошла ошибка', false, true);
+      } finally {
+        // Перезапускаем распознавание речи после завершения обработки
+        if (recognition && recognition._tempStop) {
+          recognition._tempStop = false;
+          setTimeout(() => {
+            try {
+              if (!recognition._isRunning && !isSpeaking) {
+                recognition.start();
+              }
+            } catch(e) {
+              console.error("Ошибка перезапуска после команды:", e);
+            }
+          }, 800);
+        }
       }
-      const rec=new webkitSpeechRecognition();
-      rec.continuous=true; rec.interimResults=true; rec.lang='ru-RU';
-      const stopAll=['хватит','прекрати всё','останови всё'];
+    }
+	
+	async function processCommand(text) {
+      const lower = text.toLowerCase();
+      lastCommand = lower; // Сохраняем последнюю команду для контекста
+      
+      // Команды для камеры и фото
+      const photo = ['сделай фото', 'сфотографируй', 'сделай снимок'];
+      const camOn = ['камера', 'включи камеру'];
+      const camOff = ['стоп камера', 'выключи камеру'];
+      const vidStart = ['запусти видео', 'запиши видео'];
+      const vidStop = ['стоп видео', 'останови видео'];
+      const dlPhoto = ['скачай фото', 'download photo'];
+      const dlVideo = ['скачай видео', 'download video'];
+      const stopAll = ['хватит', 'прекрати всё', 'останови всё', 'стоп всё'];
 
-      rec.onstart=()=>{listeningIndicator.style.display='block';voiceBtn.classList.add('active');addMessage('Распознавание запущено.'); rec._isRunning=true;};
-      rec.onend =()=>{listeningIndicator.style.display='none';voiceBtn.classList.remove('active'); rec._isRunning=false;};
+      // Команды для управления YouTube
+      const ytStop = ['останови ютуб', 'пауза видео', 'пауза', 'останови видео на ютубе', 'стоп ютуб'];
+      const ytPlay = ['продолжи видео', 'продолжи ютуб', 'воспроизведи ютуб', 'плей', 'играй'];
+      const ytReplay = ['повтори видео', 'покажи еще раз', 'включи то же видео', 'покажи снова', 'еще раз'];
+      
+      // Расширенные триггеры для YouTube (НОВОЕ!)
+      const ytTriggers = [
+        'включ видео', 'включаю видео', 'запускаю видео', 'найду видео',
+        'включ фильм', 'включаю фильм', 'запускаю фильм', 'найду фильм',
+        'включ ролик', 'включаю ролик', 'запускаю ролик', 'найду ролик',
+        'поставлю видео', 'покажу видео', 'ищу видео', 'сейчас найду видео'
+      ];
 
-      rec.onresult=async(e)=>{
-        const result=e.results[e.results.length-1];
-        let txt=result[0].transcript.trim().toLowerCase();
-        if(stopAll.some(c=>txt.includes(c))){stopSpeech();stopCamera();stopRecording();rec.stop();addMessage('Распознавание остановлено');return;}
-        if(result.isFinal){
-          if(txt!==lastRecognizedText && !processingMessage){
-            lastRecognizedText=txt; processingMessage=true;
-            addMessage(txt,true); showThinking();
-            try{await processCommand(txt);}catch(err){console.error(err);hideThinking();addMessage('Ошибка',false,true);}
-            finally{setTimeout(()=>processingMessage=false,1500);}
+      // Проверка на команду остановки всего
+      if (stopAll.some(t => lower.includes(t))) {
+        hideThinking();
+        stopSpeech();
+        stopCamera();
+        stopRecording();
+        if (recognition) {
+          recognition._manualStop = true;
+          recognition.stop();
+        }
+        addMessage('Все процессы остановлены');
+        return;
+      }
+      
+      if (photo.some(t => lower.includes(t))) {
+        hideThinking(); 
+        if (!isCameraActive) await startCamera(); 
+        capturePhoto(); 
+        return;
+      }
+      
+      if (camOn.some(t => lower.includes(t))) {
+        hideThinking(); 
+        await startCamera(); 
+        return;
+      }
+      
+      if (camOff.some(t => lower.includes(t))) {
+        hideThinking(); 
+        stopCamera(); 
+        return;
+      }
+      
+      if (vidStart.some(t => lower.includes(t)) && !lower.includes('ютуб') && !lower.includes('youtube')) {
+        hideThinking(); 
+        if (!isCameraActive) await startCamera(); 
+        startRecording(); 
+        return;
+      }
+      
+      if (vidStop.some(t => lower.includes(t))) {
+        hideThinking(); 
+        stopRecording(); 
+        return;
+      }
+      
+      if (dlPhoto.some(t => lower.includes(t))) {
+        hideThinking();
+        if (!lastPhotoDataUrl) {
+          addMessage('Нет фото для скачивания', false, true);
+          return;
+        }
+        const a = document.createElement('a');
+        a.href = lastPhotoDataUrl;
+        a.download = 'photo.jpg';
+        a.click();
+        addMessage('Фото скачано');
+        return;
+      }
+      
+      if (dlVideo.some(t => lower.includes(t))) {
+        hideThinking();
+        if (!lastVideoBlobUrl) {
+          addMessage('Нет видео для скачивания', false, true);
+          return;
+        }
+        const a = document.createElement('a');
+        a.href = lastVideoBlobUrl;
+        a.download = 'video.mp4';
+        a.click();
+        addMessage('Видео скачано');
+        return;
+      }
+
+      // Остановка YouTube видео
+      if (ytStop.some(t => lower.includes(t))) {
+        hideThinking();
+        if (youtubePlayerState === 'playing') {
+          if (stopYouTubeVideo()) {
+            addMessage('Видео на паузе');
+          } else {
+            addMessage('Не удалось остановить видео');
           }
         } else {
-          if(noSpeechTimer) clearTimeout(noSpeechTimer);
-          noSpeechTimer=setTimeout(()=>{
-            if(txt && !processingMessage){
-              lastRecognizedText=txt; processingMessage=true;
-              addMessage(txt,true); showThinking();
-              processCommand(txt).finally(()=>setTimeout(()=>processingMessage=false,1500));
+          addMessage('Нет воспроизводящегося видео');
+        }
+        return;
+      }
+
+      // Продолжение YouTube видео
+      if (ytPlay.some(t => lower.includes(t))) {
+        hideThinking();
+        if (youtubePlayerState === 'paused') {
+          if (continueYouTubeVideo()) {
+            addMessage('Воспроизведение продолжено');
+          } else {
+            addMessage('Не удалось продолжить воспроизведение');
+          }
+        } else if (youtubePlayerState === 'stopped' && lastYouTubeUrl) {
+          playVideo(lastYouTubeUrl);
+          addMessage(`Воспроизвожу предыдущее видео: "${lastYouTubeQuery}"`);
+        } else {
+          addMessage('Нет видео для продолжения');
+        }
+        return;
+      }
+
+      // Повторное воспроизведение последнего YouTube видео
+      if (ytReplay.some(t => lower.includes(t))) {
+        hideThinking();
+        if (lastYouTubeUrl) {
+          playVideo(lastYouTubeUrl);
+          addMessage(`Повторно показываю видео: "${lastYouTubeQuery}"`);
+        } else {
+          addMessage('Нет предыдущего видео для повтора');
+        }
+        return;
+      }
+      
+      // НОВАЯ ПРОВЕРКА! Если Gemini говорит что включает видео, мы извлекаем тему
+      // и реально запускаем поиск и воспроизведение видео
+      if (ytTriggers.some(t => lower.includes(t))) {
+        hideThinking();
+        
+        // Извлекаем тему видео после ключевых слов
+        let videoTopic = '';
+        
+        // Проходим по всем триггерам и проверяем, какой сработал
+        for (const trigger of ytTriggers) {
+          if (lower.includes(trigger)) {
+            // Находим индекс триггера и берем всё, что после него
+            const triggerIndex = lower.indexOf(trigger) + trigger.length;
+            let afterTrigger = text.substring(triggerIndex).trim();
+            
+            // Удаляем возможное про/о/об в начале, если они есть
+            afterTrigger = afterTrigger.replace(/^(про|о|об)\s+/i, '').trim();
+            
+            // Удаляем возможные восклицательные знаки и смайлики в конце
+            afterTrigger = afterTrigger.replace(/[!.?]+\s*[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}].*$/u, '').trim();
+            
+            if (afterTrigger) {
+              videoTopic = afterTrigger;
+              console.log("Извлечена тема видео:", videoTopic);
+              break;
             }
-          },2000);
+          }
+        }
+        
+        if (videoTopic) {
+          addMessage(`Ищу видео про "${videoTopic}"...`);
+          
+          const yt = await searchYouTube(videoTopic);
+          if (yt) {
+            lastYouTubeUrl = yt;
+            lastYouTubeQuery = videoTopic;
+            if (playVideo(yt)) {
+              addMessage(`Показываю видео по запросу: "${videoTopic}"`);
+            } else {
+              addMessage('Не удалось запустить видео. Попробуйте нажать кнопку "Воспроизвести"');
+            }
+          } else {
+            addMessage(`Не удалось найти видео про "${videoTopic}"`);
+          }
+          return;
+        }
+      }
+	  
+	  // Улучшенная логика для YouTube с более точным поиском
+      const youtubeCommands = [
+        'покажи видео', 'покажи ютуб', 'найди видео', 'ютуб', 
+        'запусти видео на ютуб', 'включи видео', 'открой видео'
+      ];
+      
+      // Проверяем на прямую команду "запусти видео X" или "покажи видео X"
+      const directYoutubeRegex = /(запусти|покажи|найди|включи|открой)\s+видео\s+(про|о|с|об|)\s*(.+)/i;
+      const directMatch = text.match(directYoutubeRegex);
+      
+      if (directMatch && directMatch[3]) {
+        const query = directMatch[3].trim();
+        if (query.length > 2) { // Минимальная длина запроса
+          hideThinking();
+          addMessage(`Ищу видео про "${query}"...`);
+          
+          const yt = await searchYouTube(query);
+          if (yt) {
+            lastYouTubeUrl = yt;
+            lastYouTubeQuery = query;
+            if (playVideo(yt)) {
+              addMessage(`Показываю видео по запросу: "${query}"`);
+            } else {
+              addMessage('Не удалось запустить видео. Попробуйте нажать кнопку "Воспроизвести"');
+            }
+          } else {
+            addMessage(`Не удалось найти видео: "${query}"`);
+          }
+          return;
+        }
+      }
+      
+      // Обработка обычных команд для YouTube - НЕ ищем сразу, только спрашиваем
+      if (youtubeCommands.some(cmd => lower.includes(cmd)) && !waitingForYouTubeQuery) {
+        hideThinking();
+        
+        // Если есть предыдущий запрос, спрашиваем, нужно ли показать его снова
+        if (lastYouTubeQuery) {
+          addMessage(`Недавно вы смотрели видео про "${lastYouTubeQuery}". Хотите посмотреть его снова или найти другое видео?`);
+          waitingForYouTubeQuery = true;
+          return;
+        } else {
+          waitingForYouTubeQuery = true;
+          addMessage('Какое видео вы хотите посмотреть?');
+          return;
+        }
+      }
+      
+      // Обработка ответа на запрос о видео
+      if (waitingForYouTubeQuery) {
+        waitingForYouTubeQuery = false;
+        hideThinking();
+        
+        // Проверяем, хочет ли пользователь повторно посмотреть предыдущее видео
+        const repeatKeywords = ['снова', 'повтори', 'еще раз', 'то же', 'тот же', 'предыдущий', 'его же'];
+        const isRepeatRequest = repeatKeywords.some(kw => lower.includes(kw));
+        
+        if (isRepeatRequest && lastYouTubeUrl) {
+          playVideo(lastYouTubeUrl);
+          addMessage(`Повторно показываю видео про "${lastYouTubeQuery}"`);
+          return;
+        }
+        
+        if (text.length < 3) {
+          addMessage('Слишком короткий запрос. Пожалуйста, уточните, какое видео вы хотите посмотреть.');
+          return;
+        }
+        
+        addMessage(`Ищу видео по запросу: "${text}"...`);
+        const yt = await searchYouTube(text);
+        if (yt) {
+          lastYouTubeUrl = yt;
+          lastYouTubeQuery = text;
+          if (playVideo(yt)) {
+            addMessage(`Воспроизводится: "${text}"`);
+          } else {
+            addMessage('Не удалось запустить видео. Нажмите кнопку "Воспроизвести" для запуска.');
+          }
+        } else {
+          addMessage('К сожалению, не могу найти подходящее видео по вашему запросу.');
+        }
+        return;
+      }
+
+      // Стандартный ответ от Gemini с учетом контекста YouTube - НЕ ищем видео автоматически
+      const aiPrompt = lastYouTubeQuery 
+        ? `${text} (Примечание: недавно пользователь смотрел видео про "${lastYouTubeQuery}")` 
+        : text;
+      
+      const ai = await getGeminiResponse(aiPrompt);
+      hideThinking(); 
+      addMessage(ai); 
+      chatHistory.push({role: 'assistant', content: ai});
+    }
+	
+	/* --- Распознавание речи --- */
+    function setupSpeechRecognition() {
+      if (!('webkitSpeechRecognition' in window)) {
+        addMessage('Браузер не поддерживает распознавание речи', false, true);
+        voiceBtn.disabled = true; 
+        return null;
+      }
+      
+      const useSimpleMode = localStorage.getItem('simple_voice_mode') === 'true';
+      
+      const rec = new webkitSpeechRecognition();
+      rec.continuous = true; // Всегда используем continuous режим для полных фраз
+      rec.interimResults = true; // Всегда включаем для лучшей обратной связи
+      rec.lang = 'ru-RU';
+      rec.maxAlternatives = 3;
+      
+      // Дополнительные свойства
+      rec._isRunning = false;
+      rec._manualStop = false;
+      rec._tempStop = false;
+      rec._wasStarted = false;
+      rec._completeCommand = ''; // Для сохранения полной команды
+      rec._intermediateTexts = []; // Массив для сохранения промежуточных результатов
+      rec._processingTimeout = null; // Таймер для обработки команды
+      
+      function updateVisualStatus(isRunning) {
+        listeningIndicator.style.display = isRunning ? 'block' : 'none';
+        voiceBtn.classList.toggle('active', isRunning);
+        voiceBtn.textContent = isRunning ? '🎤 Активен' : '🎤';
+        updateRecognitionStatus(isRunning ? 'Слушаю...' : 'Микрофон выключен');
+      }
+
+      rec.onstart = () => {
+        rec._isRunning = true;
+        updateVisualStatus(true);
+        
+        // Сбрасываем накопленные данные
+        rec._completeCommand = '';
+        rec._intermediateTexts = [];
+        
+        if (volumeMeter) {
+          volumeMeter.style.display = 'block';
+          volumeLevel.style.width = '0%';
+        }
+        
+        activateSpeechSynthesis();
+        setupVolumeMeter();
+        
+        if (!rec._wasStarted) {
+          addMessage('Распознавание речи запущено. Я вас слушаю.'); 
+          rec._wasStarted = true;
+        }
+        
+        if (restartRecognitionTimer) {
+          clearTimeout(restartRecognitionTimer);
+          restartRecognitionTimer = null;
         }
       };
+      
+      rec.onend = () => {
+        rec._isRunning = false;
+        updateVisualStatus(false);
+        
+        // Скрываем индикатор громкости
+        if (volumeMeter) {
+          volumeMeter.style.display = 'none';
+        }
+        
+        console.log("Распознавание остановлено", 
+                  "manual:", rec._manualStop, 
+                  "temp:", rec._tempStop,
+                  "speaking:", isSpeaking);
+        
+        // Не перезапускаем только при явной остановке пользователем
+        if (!rec._manualStop && !isSpeaking) {
+          // Задержка перед перезапуском
+          const delay = isSpeaking ? 1000 : 600;
+          
+          restartRecognitionTimer = setTimeout(() => {
+            // Проверяем, не был ли микрофон запущен за это время
+            if (!rec._isRunning && !rec._manualStop && !isSpeaking) {
+              console.log("Автоматический перезапуск микрофона");
+              try {
+                rec.start();
+              } catch(err) {
+                console.error('Ошибка при перезапуске:', err);
+                
+                // Повторная попытка через больший интервал
+                setTimeout(() => {
+                  try { 
+                    console.log("Повторная попытка запуска микрофона");
+                    rec.start(); 
+                  } catch(err2) { 
+                    console.error("Повторная ошибка:", err2);
+                    updateRecognitionStatus('Ошибка запуска распознавания');
+                  }
+                }, 1000);
+              }
+            }
+          }, delay);
+        }
+        
+        // Сбрасываем флаг временной остановки
+        rec._tempStop = false;
+      };
+
+      rec.onerror = (event) => {
+        console.error("Ошибка распознавания речи:", event.error);
+        
+        // Сообщаем пользователю только о критичных ошибках
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          addMessage('Доступ к микрофону запрещен! Пожалуйста, разрешите доступ в настройках браузера.', false, true);
+          updateRecognitionStatus('Нет доступа к микрофону');
+        } else if (event.error === 'no-speech') {
+          updateRecognitionStatus('Не слышу речи');
+        } else if (event.error === 'audio-capture') {
+          updateRecognitionStatus('Проблема с записью звука');
+        } else if (event.error === 'network') {
+          updateRecognitionStatus('Сетевая ошибка');
+        } else {
+          updateRecognitionStatus('Ошибка распознавания');
+        }
+        
+        // Перезапуск при определенных ошибках
+        if (event.error === 'no-speech' || event.error === 'audio-capture' || event.error === 'network') {
+          if (rec._isRunning) {
+            rec.stop();
+          } else if (!isSpeaking) {
+            setTimeout(() => {
+              try {
+                rec.start();
+              } catch(e) {
+                console.error(`Ошибка перезапуска после ${event.error}:`, e);
+              }
+            }, 500);
+          }
+        }
+      };
+
+      // ПОЛНОСТЬЮ ПЕРЕПИСАННЫЙ ОБРАБОТЧИК РЕЗУЛЬТАТОВ
+      rec.onresult = async (event) => {
+        if (isSpeaking) return;
+        
+        const result = event.results[event.results.length - 1];
+        
+        // Находим лучший вариант
+        let bestText = '';
+        let highestConfidence = 0;
+        
+        for (let i = 0; i < result.length; i++) {
+          if (result[i].confidence > highestConfidence) {
+            highestConfidence = result[i].confidence;
+            bestText = result[i].transcript.trim();
+          }
+        }
+        
+        // Обновляем статус распознавания
+        if (bestText.length > 0) {
+          updateRecognitionStatus('Слышу: ' + bestText);
+        }
+        
+        // Обработка команд в зависимости от того, финальный это результат или нет
+        if (result.isFinal) {
+          clearTimeout(rec._processingTimeout);
+          
+          // ВАЖНО! Сохраняем полный распознанный текст
+          rec._completeCommand = bestText;
+          
+          // Проверяем длину команды и признаки YouTube запроса
+          const lower = bestText.toLowerCase();
+          const isYoutubeRequest = lower.includes('видео') || 
+                               lower.includes('ютуб') || 
+                               lower.includes('youtube') ||
+                               lower.includes('фильм') ||
+                               lower.includes('ролик');
+          
+          // Обрабатываем команду с небольшой задержкой, чтобы успеть собрать все фрагменты
+          rec._processingTimeout = setTimeout(() => {
+            if (!processingMessage) {
+              processingMessage = true;
+              
+              // Используем полную команду
+              const finalCommand = rec._completeCommand;
+              
+              // Очищаем сохраненные данные
+              rec._completeCommand = '';
+              rec._intermediateTexts = [];
+              
+              addMessage(finalCommand, true);
+              showThinking();
+              
+              // Временно останавливаем распознавание
+              if (rec._isRunning) {
+                rec._tempStop = true;
+                rec.stop();
+              }
+              
+              processCommand(finalCommand).finally(() => {
+                processingMessage = false;
+              });
+            }
+          }, isYoutubeRequest ? 800 : 300); // Для YouTube запросов ждем дольше
+          
+        } else {
+          // Для промежуточных результатов сохраняем текст
+          if (bestText.length > 5) {
+            rec._intermediateTexts.push(bestText);
+            
+            // Если текст достаточно качественный и длинный, обновляем полную команду
+            if (highestConfidence > 0.6 && bestText.length > 10) {
+              rec._completeCommand = bestText;
+            }
+            
+            // Сбрасываем предыдущий таймер и создаем новый
+            clearTimeout(rec._processingTimeout);
+            
+            // Если пользователь сделал паузу, обрабатываем команду
+            rec._processingTimeout = setTimeout(() => {
+              if (!processingMessage && rec._completeCommand) {
+                processingMessage = true;
+                
+                // Используем самую длинную сохраненную команду
+                let bestCommand = rec._completeCommand;
+                if (rec._intermediateTexts.length > 0) {
+                  const longestText = rec._intermediateTexts.reduce((a, b) => 
+                    a.length > b.length ? a : b, '');
+                  if (longestText.length > bestCommand.length) {
+                    bestCommand = longestText;
+                  }
+                }
+                
+                // Очищаем сохраненные данные
+                rec._completeCommand = '';
+                rec._intermediateTexts = [];
+                
+                addMessage(bestCommand, true);
+                showThinking();
+                
+                // Временно останавливаем распознавание
+                if (rec._isRunning) {
+                  rec._tempStop = true;
+                  rec.stop();
+                }
+                
+                processCommand(bestCommand).finally(() => {
+                  processingMessage = false;
+                });
+              }
+            }, 1500); // Большая задержка для уверенности, что команда завершена
+          }
+        }
+      };
+      
       return rec;
     }
+	
+	/* --- Индикатор громкости --- */
+    function setupVolumeMeter() {
+      if (audioContext) return; // Избегаем повторной инициализации
+      
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+              audioStream = stream;
+              audioContext = new (window.AudioContext || window.webkitAudioContext)();
+              analyser = audioContext.createAnalyser();
+              microphone = audioContext.createMediaStreamSource(stream);
+              
+              analyser.smoothingTimeConstant = 0.8;
+              analyser.fftSize = 1024;
+              
+              microphone.connect(analyser);
+              
+              // Создаем процессор скрипта для получения данных
+              const scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+              analyser.connect(scriptProcessor);
+              scriptProcessor.connect(audioContext.destination);
+              
+              scriptProcessor.onaudioprocess = () => {
+                const array = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(array);
+                const values = array.reduce((a, b) => a + b, 0) / array.length;
+                
+                if (volumeLevel) {
+                  volumeLevel.style.width = Math.min(values * 2, 100) + '%';
+                }
+              };
+            })
+            .catch(err => {
+              console.error('Ошибка доступа к микрофону для индикатора громкости:', err);
+            });
+        }
+      } catch (e) {
+        console.error('Ошибка инициализации индикатора громкости:', e);
+      }
+    }
 
-    /* --- Слушатели кнопок --- */
-    sendBtn.addEventListener('click', sendMessage);
-    userInput.addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
-    voiceBtn.addEventListener('click', ()=>{
-      if(!recognition) recognition=setupSpeechRecognition();
-      if(!recognition) return;
-      if(recognition._isRunning){ recognition.stop(); } else { recognition.start(); }
+    // Освобождение ресурсов аудио
+    function cleanupAudioResources() {
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+        audioStream = null;
+      }
+      if (audioContext) {
+        audioContext.close().catch(e => console.error('Ошибка закрытия аудиоконтекста:', e));
+        audioContext = null;
+      }
+      analyser = null;
+      microphone = null;
+    }
+
+    /* --- Управление микрофоном --- */
+    function toggleVoiceInput() {
+      if (!recognition) {
+        recognition = setupSpeechRecognition();
+        if (!recognition) return;
+      }
+      
+      if (recognition._isRunning) {
+        recognition._manualStop = true;
+        recognition.stop();
+        addMessage('Микрофон выключен');
+      } else {
+        try {
+          // Активация синтеза речи перед запуском распознавания
+          activateSpeechSynthesis();
+          
+          // Сброс флагов и запуск
+          recognition._manualStop = false;
+          recognition.start();
+          
+          addMessage('Микрофон включен');
+        } catch(e) {
+          console.error("Ошибка запуска микрофона:", e);
+          addMessage('Не удалось включить микрофон', false, true);
+        }
+      }
+    }
+
+    // Функция для добавления кнопки перезапуска микрофона
+    function addRestartMicButton() {
+      if (document.getElementById('restart-mic-btn')) return;
+      
+      const restartBtn = document.createElement('button');
+      restartBtn.id = 'restart-mic-btn';
+      restartBtn.textContent = '🔄 Mic';
+      restartBtn.style.marginLeft = '5px';
+      
+      restartBtn.addEventListener('click', () => {
+        // Полная инициализация нового экземпляра распознавания
+        if (recognition) {
+          if (recognition._isRunning) {
+            recognition.stop();
+          }
+          recognition = null;
+        }
+        
+        // Очищаем ресурсы аудио
+        cleanupAudioResources();
+        
+        setTimeout(() => {
+          recognition = setupSpeechRecognition();
+          if (recognition) {
+            try {
+              recognition.start();
+              addMessage('Распознавание перезапущено');
+            } catch(e) {
+              console.error('Ошибка перезапуска:', e);
+              addMessage('Не удалось перезапустить микрофон', false, true);
+            }
+          }
+        }, 500);
+      });
+      
+      document.getElementById('input-container').appendChild(restartBtn);
+    }
+    
+    // Функция для добавления кнопки настройки режима распознавания
+    function addVoiceConfigButton() {
+      if (document.getElementById('voice-config-btn')) return;
+      
+      const configBtn = document.createElement('button');
+      configBtn.id = 'voice-config-btn';
+      configBtn.textContent = '⚙️';
+      configBtn.style.marginLeft = '5px';
+      
+      configBtn.addEventListener('click', () => {
+        const useSimpleMode = confirm('Использовать упрощенный режим распознавания речи? (Рекомендуется для устройств с проблемами распознавания)');
+        
+        // Остановка текущего распознавания
+        if (recognition) {
+          if (recognition._isRunning) {
+            recognition.stop();
+          }
+          recognition = null;
+        }
+        
+        // Очищаем ресурсы аудио
+        cleanupAudioResources();
+        
+        // Сохраняем выбранный режим и перезапускаем
+        setTimeout(() => {
+          localStorage.setItem('simple_voice_mode', useSimpleMode ? 'true' : 'false');
+          
+          if (useSimpleMode) {
+            addMessage('Включен упрощенный режим распознавания. Говорите короткими фразами с паузами.');
+          } else {
+            addMessage('Включен стандартный режим распознавания.');
+          }
+          
+          recognition = setupSpeechRecognition();
+          if (recognition) {
+            try {
+              recognition.start();
+            } catch(e) {
+              console.error('Ошибка запуска после изменения режима:', e);
+            }
+          }
+        }, 500);
+      });
+      
+      document.getElementById('input-container').appendChild(configBtn);
+    }
+	
+	/* --- Обработчики событий --- */
+    // Текстовый ввод
+    sendBtn.addEventListener('click', () => {
+      activateSpeechSynthesis();
+      sendMessage();
     });
+    
+    userInput.addEventListener('keydown', e => { 
+      if (e.key === 'Enter') {
+        activateSpeechSynthesis();
+        sendMessage();
+      }
+    });
+    
+    // Голосовой ввод
+    voiceBtn.addEventListener('click', () => {
+      activateSpeechSynthesis();
+      toggleVoiceInput();
+    });
+    
+    // Камера
     cameraBtn.addEventListener('click', capturePhoto);
+    
+    // YouTube
+    youtubePlayBtn.addEventListener('click', () => {
+      if (youtubePlayerState === 'paused') {
+        continueYouTubeVideo();
+        addMessage('Воспроизведение продолжено');
+      } else {
+        playCurrentYouTube();
+      }
+    });
+    
+    youtubeSearchBtn.addEventListener('click', initiateNewYouTubeSearch);
 
+    // Обработка кнопок пульта для Android TV
+    document.addEventListener('keydown', (e) => {
+      switch(e.keyCode) {
+        case 13: // OK button
+          if (document.activeElement === userInput) {
+            sendMessage();
+          } else {
+            toggleVoiceInput();
+          }
+          break;
+        case 37: // Left
+          userInput.focus();
+          break;
+        case 39: // Right
+          voiceBtn.focus();
+          break;
+        case 27: // Back
+          stopSpeech();
+          stopCamera();
+          stopRecording();
+          if (recognition && recognition._isRunning) {
+            recognition._manualStop = true;
+            recognition.stop();
+          }
+          break;
+      }
+    });
+
+    /* --- Инициализация --- */
+    function init() {
+      // Если устройство Android TV
+      if (isAndroidTV) {
+        initForTV();
+      }
+      
+      // Предзагрузка голосов
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.getVoices();
+      }
+      
+      // Добавление дополнительных кнопок управления
+      addRestartMicButton();
+      addVoiceConfigButton();
+      
+      // Загружаем сохраненный режим распознавания
+      const savedMode = localStorage.getItem('simple_voice_mode');
+      if (savedMode === 'true') {
+        updateRecognitionStatus('Режим: упрощенное распознавание');
+      } else {
+        updateRecognitionStatus('Режим: стандартное распознавание');
+      }
+      
+      // Приветственное сообщение
+      setTimeout(() => {
+        addMessage('Привет! Я KiKo Beam - ваш умный помощник. Чем могу помочь сегодня? 😊');
+        
+        // Автоматический запуск распознавания речи с задержкой
+        setTimeout(() => {
+          if (!recognition) {
+            recognition = setupSpeechRecognition();
+          }
+          
+          if (recognition && !recognition._isRunning) {
+            try {
+              recognition.start();
+            } catch(e) {
+              console.error("Ошибка первого запуска распознавания:", e);
+              setTimeout(() => {
+                try { 
+                  recognition.start(); 
+                } catch(e) { 
+                  console.error("Повторная ошибка запуска:", e);
+                  addMessage("Не удалось автоматически запустить микрофон. Нажмите на кнопку 🎤, чтобы включить его вручную.");
+                }
+              }, 1000);
+            }
+          }
+        }, 1000);
+      }, 500);
+    }
+
+    // Запуск приложения
+    window.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>
-```
+		
+		
